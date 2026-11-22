@@ -30,6 +30,14 @@ on:
       build:
         description: "Build number"
         value: ${{ jobs.build_apk.outputs.build }}
+    # Declared so that build_apk can read the same-named secrets of the release environment: a called workflow only
+    # sees the secrets it declares. The caller passes empty values (there are no repository-level secrets); inside
+    # build_apk the environment's secrets take precedence. Without this declaration they read as empty.
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
 
 concurrency:
   group: shareme-android-${{ github.workflow }}-${{ github.ref }}

@@ -63,6 +63,11 @@ jobs:
   android:
     needs: check_branch
     uses: ./.github/workflows/shareme_android.yml
+    # Passes empty values on purpose: the real ones are secrets of the release environment, which take precedence
+    # inside build_apk. The names still have to be passed (see the secrets declaration in shareme_android.yml).
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
 
   sign_and_publish:
     needs: [windows, android]
