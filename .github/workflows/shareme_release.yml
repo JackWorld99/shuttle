@@ -19,7 +19,8 @@
 # - The jobs that use secrets (Android signing in build_apk, manifest signing and publishing in
 #   sign_and_publish) run in the GitHub Environment "release". Its secrets (ANDROID_KEYSTORE_BASE64,
 #   ANDROID_KEYSTORE_PASSWORD, SHUTTLE_UPDATE_SIGNING_KEY) can only be used from the main branch, and each run
-#   waits for the maintainer's approval. Jobs outside the environment (the Windows build, pull request checks)
+#   waits for the maintainer's approval. GitHub asks once per job: when the Android build starts, and again
+#   before signing and publishing. Jobs outside the environment (the Windows build, pull request checks)
 #   cannot read them.
 name: Shuttle Release
 
