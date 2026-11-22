@@ -15,8 +15,8 @@ const updateDownloadPrefix = 'https://github.com/JackWorld99/shuttle/releases/do
 /// Before publishing, the release workflow checks that the signing key's public key is in this list (the "Sign manifest" step of
 /// shareme_release.yml).
 const updateTrustedKeys = <String>[
-  // Key ID 471a5bae683028e6, used from build 2301. Builds up to 2289 trusted an earlier key (9d79e6efdfff087c) that stayed
-  // with the build setup used before the source was published, so those installs have to install 2301 once by hand.
+  // Key ID 471a5bae683028e6, used from build 2302. Builds up to 2289 trusted an earlier key (9d79e6efdfff087c) that stayed
+  // with the build setup used before the source was published, so those installs have to install 2302 once by hand.
   'HLZRgUtThznOWSnVxUUK46ORCw/eiQAkf3If/N5HahU=',
 ];
 
