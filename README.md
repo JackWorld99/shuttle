@@ -1,333 +1,127 @@
-# LocalSend
+<div align="center">
 
-[![CI status][ci-badge]][ci-workflow]
-[![Translations][translate-badge]][translate-link]
-[![Packaging status][packaging-badge]][packaging-link]
+<img src="docs/readme/hero.png" alt="Shuttle: send photos, videos, files and text between your phone and computer" width="100%">
 
-[ci-badge]: https://github.com/localsend/localsend/actions/workflows/ci.yml/badge.svg
-[ci-workflow]: https://github.com/localsend/localsend/actions/workflows/ci.yml
-[translate-badge]: https://hosted.weblate.org/widget/localsend/app/svg-badge.svg
-[translate-link]: https://hosted.weblate.org/engage/localsend/
-[packaging-badge]: https://repology.org/badge/tiny-repos/localsend.svg
-[packaging-link]: https://repology.org/project/localsend/versions
+### AirDrop for the rest of us.
 
-[Homepage][homepage] • [Discord][discord] • [GitHub][github] • [Codeberg][codeberg]
+**Toss photos, videos, files and text between your Android phone and your Windows PC — in seconds.**<br>
+Full quality. Encrypted. No cable, no cloud, no account.
 
-[English (Default)](README.md) • [中文](/support/readme/README_ZH.md)
+[![Download for Android](https://img.shields.io/badge/Download-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/JackWorld99/shuttle/releases/latest/download/Shuttle-Android.apk)
+[![Download for Windows](https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNCAyNCc%2BPHBhdGggZmlsbD0nd2hpdGUnIGQ9J00zIDNoOC41djguNUgzek0xMi41IDNIMjF2OC41aC04LjV6TTMgMTIuNWg4LjVWMjFIM3pNMTIuNSAxMi41SDIxVjIxaC04LjV6Jy8%2BPC9zdmc%2B)](https://github.com/JackWorld99/shuttle/releases/latest/download/Shuttle-Windows-Setup.exe)
 
-[homepage]: https://localsend.org
-[discord]: https://discord.gg/GSRWmQNP87
-[github]: https://github.com/localsend/localsend
-[codeberg]: https://codeberg.org/localsend/localsend
+[![Latest release](https://img.shields.io/github/v/release/JackWorld99/shuttle?label=latest&color=e8572a)](https://github.com/JackWorld99/shuttle/releases/latest)
+[![License](https://img.shields.io/badge/license-Apache--2.0-1f2329)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/JackWorld99/shuttle?style=social)](https://github.com/JackWorld99/shuttle)
 
-LocalSend is a free, open-source app that allows you to securely share files and messages with nearby devices over your local network without needing an internet connection.
+[中文](README.zh-CN.md) · [Why Shuttle](#why-shuttle) · [Get started](#get-started-in-a-minute) · [FAQ](#faq) · [Security](SECURITY.md)
 
-- [About](#about)
-- [Sponsors](#sponsors)
-- [Screenshots](#screenshots)
-- [Download](#download)
-- [How It Works](#how-it-works)
-- [Dependency Hierarchy](#dependency-hierarchy)
-- [Getting Started](#getting-started)
-- [Command Line Interface](#command-line-interface)
-- [Contributing](#contributing)
-  - [Translation](#translation)
-  - [Bug Fixes and Improvements](#bug-fixes-and-improvements)
-- [Troubleshooting](#troubleshooting)
-- [Building](#building)
-  - [Android](#android)
-  - [iOS](#ios)
-  - [macOS](#macos)
-  - [Windows](#windows)
-  - [Linux](#linux)
+</div>
 
-## About
+<p align="center"><img src="docs/readme/demo.gif" alt="Share a photo on the phone, it lands on the computer a moment later" width="92%"></p>
 
-LocalSend is a cross-platform app that enables secure communication between devices using a REST API and HTTPS encryption. Unlike other messaging apps that rely on external servers, LocalSend doesn't require an internet connection or third-party servers, making it a fast and reliable solution for local communication.
+## You know the drill
 
-## Sponsors
+You took a great photo. Now you want it on your computer. So you…
 
-This project is tested with BrowserStack
+- 💬 **send it to yourself in a chat app** — and it arrives blurry and compressed,
+- ☁️ **upload it to the cloud** — and wait, then download it again, then delete it,
+- 🔌 **look for a cable** — which is never where you left it.
 
-Supported by TestMu AI
+**Shuttle skips all of that.** Your phone and your computer talk to each other directly over your Wi-Fi.
+Share → tap your PC → done. The original file, every byte checked.
 
-<a href="https://www.testmuai.com/?utm_medium=sponsor&utm_source=localsend" target="_blank">
-    <img src="https://localsend.org/img/sponsors/tesmu.svg" style="vertical-align: middle;" width="250" height="45" />
-</a>
+## Why Shuttle
 
-## Screenshots
+|   |   |
+|---|---|
+| 📸 **Your photos, untouched** | Originals only — no compression, no resizing. Every file is verified with SHA-256 on arrival. |
+| ⚡ **As fast as your Wi-Fi** | Nothing goes through a server, so there's no upload and no download. In our tests, 200 photos (about 500 MB) went from phone to PC in under 40 seconds on ordinary home Wi-Fi. |
+| 🤝 **Pair once, then it just works** | Scan a QR code one time. From then on your devices find each other, and files from them arrive without a single tap. |
+| 📋 **Copy here, paste there** | Press <kbd>Ctrl</kbd>+<kbd>V</kbd> on your PC to send the clipboard to your phone. Share a link from your phone and it's ready to paste on your PC. |
+| 🔒 **Private by design** | No account, no cloud, no tracking, no ads. Transfers are encrypted, and pairing compares 12 digits on both screens so no one can sneak in. |
+| 🖥️ **Always ready** | Shuttle waits quietly in the tray, can start with Windows, and keeps itself up to date with signed updates. |
+| 🌍 **Works away from home** | Add [Tailscale](https://tailscale.com) on both devices and it works over mobile data too — still without anyone's server in between. |
 
-<img src="https://localsend.org/img/screenshot-iphone.webp" alt="iPhone screenshot" height="300"/> <img src="https://localsend.org/img/screenshot-pc.webp" alt="PC screenshot" height="300"/>
+## How it compares
 
-## Download
+|   | **Shuttle** | Chat apps | Cloud drives | USB cable |
+|---|:---:|:---:|:---:|:---:|
+| Original quality | ✅ | ❌ usually compressed | ✅ | ✅ |
+| No account needed | ✅ | ❌ | ❌ | ✅ |
+| Works without internet | ✅ | ❌ | ❌ | ✅ |
+| Files never leave your devices | ✅ | ❌ | ❌ | ✅ |
+| No cable to find | ✅ | ✅ | ✅ | ❌ |
 
-[![Packaging status](https://repology.org/badge/tiny-repos/localsend.svg)](https://repology.org/project/localsend/versions)
+## Take a look
 
-It is recommended to download the app either from an app store or from a package manager because the app does not have an auto-update.
+| Your phone | Pick where it goes | Your PC | Pair in one scan |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/readme/phone-home.png" width="200"> | <img src="docs/readme/phone-send.png" width="200"> | <img src="docs/readme/pc-home.png" width="260"> | <img src="docs/readme/pc-pair.png" width="260"> |
 
-| Windows                 | macOS                   | Linux              | Android        | iOS           | Fire OS    |
-|-------------------------|-------------------------|--------------------|----------------|---------------|------------|
-| [Winget][]              | [App Store][]           | [Flathub][]        | [Play Store][] | [App Store][] | [Amazon][] |
-| [Scoop][]               | [Homebrew][]            | [Nixpkgs][]        | [F-Droid][]    |               |            |
-| [Chocolatey][]          | [DMG Installer][latest] | [Snap][]           | [APK][latest]  |               |            |
-| [EXE Installer][latest] |                         | [AUR][]            |                |               |            |
-| [Portable ZIP][latest]  |                         | [TAR][latest]      |                |               |            |
-|                         |                         | [DEB][latest]      |                |               |            |
-|                         |                         | [AppImage][latest] |                |               |            |
+## Get started in a minute
 
-Read more about [distribution channels][].
+1. **Install** Shuttle on your phone and your PC (buttons above) and connect both to the same Wi-Fi.
+2. **Pair**: on the PC click **Add device**; on the phone tap the scan button and point it at the QR code. Both screens show the same 12 digits — confirm, and you're paired.
+3. **Toss things over**:
+   - **Phone → PC**: in any app, tap **Share → Shuttle**.
+   - **PC → phone**: drag files onto Shuttle, or press <kbd>Ctrl</kbd>+<kbd>V</kbd>.
 
-Windows binaries are signed. Read more about the [Code signing policy][].
+> **Windows says "Windows protected your PC"?** The installer isn't code-signed yet. Click **More info → Run anyway**.<br>
+> **Android asks about unknown apps?** Allow your browser to install it once.
 
-> [!CAUTION]
-> **Unofficial MSIX preview:** you can try builds from the latest commits at [localsend.ob-buff.dev](https://localsend.ob-buff.dev/). Stability is not guaranteed and all custom code tweaks are listed on that site.
+## FAQ
 
-[windows store]: https://www.microsoft.com/store/apps/9NCB4Z0TZ6RR
-[app store]: https://apps.apple.com/us/app/localsend/id1661733229
-[play store]: https://play.google.com/store/apps/details?id=org.localsend.localsend_app
-[f-droid]: https://f-droid.org/packages/org.localsend.localsend_app
-[amazon]: https://www.amazon.com/dp/B0BW6MP732
-[winget]: https://github.com/microsoft/winget-pkgs/tree/master/manifests/l/LocalSend/LocalSend
-[scoop]: https://scoop.sh/#/apps?s=0&d=1&o=true&q=localsend&id=fb88113be361ca32c0dcac423cb4afdeda0b0c66
-[chocolatey]: https://community.chocolatey.org/packages/localsend
-[homebrew]: https://formulae.brew.sh/cask/localsend
-[flathub]: https://flathub.org/apps/details/org.localsend.localsend_app
-[nixpkgs]: https://search.nixos.org/packages?show=localsend
-[snap]: https://snapcraft.io/localsend
-[aur]: https://aur.archlinux.org/packages/localsend-bin
-[latest]: https://github.com/localsend/localsend/releases/latest
-[distribution channels]: https://github.com/localsend/localsend/blob/main/CONTRIBUTING.md#distribution
-[code signing policy]: https://github.com/localsend/localsend/blob/main/CODE_SIGNING.md
+<details>
+<summary><b>Is it really free?</b></summary>
 
-**Compatibility**
+Yes. Shuttle is open source (Apache-2.0), with no ads, no paid tier and no account.
+</details>
 
-| Platform | Minimum Version | Note                                                                                                                        |
-|----------|-----------------|-----------------------------------------------------------------------------------------------------------------------------|
-| Android  | 7.0             | The last version to support Android 5 and 6 is v1.17.0.                                                                     |
-| iOS      | 15.0            | The last version to support iOS 13 and 14 is v1.18.2 (sharing from other apps requires iOS 14), and iOS 12 is v1.17.0.       |
-| macOS    | 12 Monterey     | The last version to support macOS 11 is v1.18.2. Use OpenCore Legacy Patcher 2.0.2 (See [#1005](https://github.com/localsend/localsend/issues/1005#issuecomment-2449899384)) |
-| Windows  | 10              | The last version to support Windows 7 is v1.15.4.   |
-| Linux    | N.A.            | Deps: Gnome: `xdg-desktop-portal` and `xdg-desktop-portal-gtk`, KDE: `xdg-desktop-portal` and `xdg-desktop-portal-kde`      |
+<details>
+<summary><b>Is it safe? Could someone else on the Wi-Fi get my files?</b></summary>
 
-## Setup
+Files go directly between your devices and are encrypted on the way. Only devices you paired (and checked the 12 digits for) can send to you without asking; anything else needs your OK first. Details in [SECURITY.md](SECURITY.md).
+</details>
 
-In most cases, LocalSend should work out of the box. However, if you are having trouble sending or receiving files, you may need to configure your firewall to allow LocalSend to communicate over your local network.
+<details>
+<summary><b>Do I need internet?</b></summary>
 
-| Traffic Type | Protocol | Port  | Action |
-|--------------|----------|-------|--------|
-| Incoming     | TCP, UDP | 53317 | Allow  |
-| Outgoing     | TCP, UDP | Any   | Allow  |
+No. Both devices just need to be on the same Wi-Fi network — even one with no internet. For use away from home, install Tailscale on both.
+</details>
 
-On Linux, for example with `ufw`: `sudo ufw allow 53317`. With `firewalld`: `sudo firewall-cmd --permanent --add-port=53317/tcp`, `sudo firewall-cmd --permanent --add-port=53317/udp`, then `sudo firewall-cmd --reload`.
+<details>
+<summary><b>The phone can't find my PC.</b></summary>
 
-Also make sure to disable AP isolation on your router. It should be usually disabled by default but some routers may have it enabled (especially guest networks).
-See [troubleshooting](#troubleshooting) for more information.
+Make sure both are on the same network (guest networks and some routers keep devices apart). On Windows, allow Shuttle through the firewall on **private** networks and set your home Wi-Fi to **Private**. Office and school networks often block devices from seeing each other — Tailscale works around that.
+</details>
 
-**Portable Mode**
+<details>
+<summary><b>iPhone? Mac? Linux?</b></summary>
 
-(Introduced in v1.13.0)
+Android and Windows today, and a macOS build is in testing. iPhone and Linux aren't available yet — [open an issue](../../issues/new/choose) to tell us which one you want most.
+</details>
 
-Create a file named `settings.json` located in the same directory as the executable.
-This file can be empty.
-The app will use this file to store settings instead of the default location.
+<details>
+<summary><b>How is this related to LocalSend?</b></summary>
 
-**Start hidden**
+Shuttle is built on [LocalSend](https://github.com/localsend/localsend), the excellent open-source file-sharing app. It keeps LocalSend's solid transfer and encryption core and adds a redesigned interface, QR pairing with verification, trusted "My devices", clipboard sending, Tailscale support and signed auto-updates. Thank you to LocalSend's author and contributors.
+</details>
 
-(Updated in v1.15.0)
+## What's next
 
-To start the app hidden (only in tray), use the `--hidden` flag (example: `localsend_app.exe --hidden`).
+- [ ] Signed macOS build
+- [ ] Resume large transfers after a dropped connection
+- [ ] Send queue: files wait on your PC and go out as soon as your phone is back online
 
-On v1.14.0 and earlier, the app starts hidden if `autostart` flag is set, and the hidden setting is enabled.
-
-## How It Works
-
-LocalSend uses a secure communication protocol that allows devices to communicate with each other using a REST API. All data is sent securely over HTTPS, and the TLS/SSL certificate is generated on the fly on each device, ensuring maximum security.
-
-For more information on the LocalSend Protocol, see the [documentation](https://github.com/localsend/protocol).
-
-## Dependency Hierarchy
-
-![Dependency hierarchy](support/docs/dependency-hierarchy.svg)
-
-## Getting Started
-
-To compile LocalSend from the source code, follow these steps:
-
-1. Install Flutter [directly](https://flutter.dev) or using [fvm](https://fvm.app) (see [version required](.fvmrc))
-2. Install [Rust](https://www.rust-lang.org/tools/install)
-3. Clone the `LocalSend` repository
-4. Run `cd app` to enter the app directory
-5. Run `flutter pub get` to download dependencies
-6. Run `flutter run` to start the app
-
-> [!NOTE]
-> LocalSend currently requires an older Flutter version (specified in [.fvmrc](.fvmrc))
-> and thus build issues may be caused by a mismatch between the required and the (system-wide) installed Flutter version.  
-> To make development more consistent, LocalSend uses [fvm](https://fvm.app) to manage the project Flutter version.
-> After installing `fvm`, run `fvm flutter` instead of `flutter`.
-
-## Command Line Interface
-
-The LocalSend CLI is a terminal client built on LocalSend Protocol v2.
-
-On macOS and Linux, install the CLI with [Homebrew](https://brew.sh):
-
-```shell
-brew update
-brew install localsend-cli
-```
-
-To upgrade an existing installation:
-
-```shell
-brew update
-brew upgrade localsend-cli
-```
-
-Run `localsend-cli --help` to see every available option and hotkey.
-
-Use the `send` command with one or more files, directories, or a mixture of both:
-
-```shell
-localsend-cli send report.pdf photo.jpg ./project-backup
-```
-
-The command opens the discovered-device list; select the destination interactively
-and press Enter to start the transfer.
-
-To select the destination without an interactive device list, pass its exact alias
-or IP address:
-
-```shell
-localsend-cli send --to "Cute Tomato" report.pdf
-localsend-cli send --to 192.168.27.26 report.pdf
-```
-
-An alias must uniquely identify a discovered device. An IP address is probed directly
-over HTTPS on LocalSend's default port (`53317`).
-
-To send a text message instead of files, use `--text` together with `--to`.
-Pass `-` to read the text from stdin:
-
-```shell
-localsend-cli send --to "Cute Tomato" --text "https://localsend.org"
-echo "Hello" | localsend-cli send --to "Cute Tomato" --text -
-```
-
-A single trailing line break is dropped from stdin. Text longer than 64 KB is sent as
-a `.txt` file instead. Stdin must be UTF-8 and at most 16 MB; send other data as a file.
-
-Directories are collected recursively. Their selected root names and nested paths
-are preserved on the receiver. Empty directories are not sent because LocalSend
-transfers file entries rather than directory entries.
+Have an idea? [Open an issue](../../issues/new/choose).
 
 ## Contributing
 
-We welcome contributions from anyone interested in helping improve LocalSend. If you'd like to contribute, there are a few ways to get involved:
+Bug reports, ideas and pull requests are all welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Found a security problem? Please report it privately as described in [SECURITY.md](SECURITY.md).
 
-### Translation
+**If Shuttle saved you a cable hunt, a ⭐ helps others find it.**
 
-You can help translate LocalSend into other languages. We use the [Weblate](https://hosted.weblate.org/projects/localsend/app) platform to manage translations.
+## License
 
-Alternatively, you can also contribute by forking this repository and adding translations manually.
-
-The translations are located in the [app/assets/i18n](https://github.com/localsend/localsend/tree/main/app/assets/i18n) directory. Edit the `_missing_translations_<locale>.json` or `strings_<locale>.i18n.json` file to add or update translations.
-
-<a href="https://hosted.weblate.org/engage/localsend/">
-<img src="https://hosted.weblate.org/widget/localsend/app/multi-auto.svg" alt="Translation status" />
-</a>
-
-**_Take note:_ Fields decorated with `@` are not meant to be translated; they are not used in the app in any way, being merely informative text about the file or to give context to the translator.**
-
-### Bug Fixes and Improvements
-
-- **Bug Fixes:** If you find a bug, please create a pull request with a clear description of the issue and how to fix it.
-- **Improvements:** Have an idea for how to improve LocalSend? Please create an issue first to discuss why the improvement is needed.
-
-For more information, see the [contributing guide](https://github.com/localsend/localsend/blob/main/CONTRIBUTING.md).
-
-## Troubleshooting
-
-| Issue              | Platform (Sending) | Platform (Receiving) | Solution                                                                                                                                |
-|--------------------|--------------------|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| Device not visible | Any                | Any                  | Make sure to disable AP-Isolation on your router. If it is enabled, connections between devices are forbidden.                          |
-| Device not visible | Any                | Windows              | Make sure to configure your network as a "private" network. Windows might be more restrictive when the network is configured as public. |
-| Device not visible | macOS, iOS         | Any                  | You can try to toggle the "Local Network" permission under "Privacy" in the OS settings.                                                |
-| Device not visible | Any                | Any                  | If a VPN is active, allow local/LAN traffic or temporarily disable the VPN. Some VPNs block local network connections by default.       |
-| Device not visible | Any                | Any                  | Use manual sending to enter the receiver's IP address directly. If that works, add the device to favorites so it is probed directly.    |
-| Speed too slow     | Any                | Any                  | Use 5 Ghz; Disable encryption on both devices                                                                                           |
-| Speed too slow     | Any                | Android              | Known issue. https://github.com/flutter-cavalry/saf_stream/issues/4                                                                     |
-
-## Building
-
-These commands are intended for maintainers only. Make sure to run them from the `app` directory.
-
-### Android
-
-Traditional APK
-
-```bash
-flutter build apk
-```
-
-AppBundle for Google Play
-
-```bash
-flutter build appbundle
-```
-
-### iOS
-
-```bash
-flutter build ipa
-```
-
-### macOS
-
-```bash
-flutter build macos
-```
-
-### Windows
-
-**Traditional**
-
-```bash
-flutter build windows
-```
-
-**Local MSIX App**
-
-```bash
-flutter pub run msix:create
-```
-
-**Store ready**
-
-```bash
-flutter pub run msix:create --store
-```
-
-### Linux
-
-**Traditional**
-
-```bash
-flutter build linux
-```
-
-**AppImage**
-
-```bash
-appimage-builder --recipe AppImageBuilder.yml
-```
-
-**Snap**
-
-Instructions in [localsend/snap/README.md](https://github.com/localsend/snap/blob/main/README.md)
-
-## Contributors
-
-<a href="https://github.com/localsend/localsend/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=localsend/localsend"  alt="Localsend Contributors"/>
-</a>
+[Apache-2.0](LICENSE). Shuttle is a modified version of [LocalSend](https://github.com/localsend/localsend) (Copyright 2022-2026 Tien Do Nam, Apache-2.0); all changes are released under Apache-2.0 as well.

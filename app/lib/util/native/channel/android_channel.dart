@@ -88,6 +88,53 @@ Future<void> openGallery() async {
   await _methodChannel.invokeMethod('openGallery');
 }
 
+// Shuttle: the "Background receiving" group on the settings page
+
+/// Shuttle: the action the native side recorded when the app was opened from the "send clipboard" quick settings tile (cleared once
+/// read). Null if there is none.
+Future<String?> takePendingActionAndroid() async {
+  return await _methodChannel.invokeMethod<String>('takePendingAction');
+}
+
+/// Shuttle: when the tile is tapped while the app is already in the foreground, Android 10+ delivers the new intent without pausing
+/// and resuming, so Dart never gets onResume; the native side therefore calls `onPendingAction` to tell us to fetch it. Pass null to
+/// stop listening.
+void listenPendingActionAndroid(void Function()? onPendingAction) {
+  _methodChannel.setMethodCallHandler(
+    onPendingAction == null
+        ? null
+        : (call) async {
+            if (call.method == 'onPendingAction') onPendingAction();
+          },
+  );
+}
+
+/// Shuttle: a recognizable device name (name the owner gave the phone → marketing model name → model code), see
+/// MainActivity.friendlyDeviceName.
+Future<String?> getFriendlyDeviceNameAndroid() async {
+  return _methodChannel.invokeMethod<String>('getFriendlyDeviceName');
+}
+
+Future<bool> isXiaomiAndroid() async {
+  return await _methodChannel.invokeMethod<bool>('isXiaomi') ?? false;
+}
+
+/// Opens Xiaomi's "Autostart" settings, falling back to the system "App info" page. Returns miui / appDetails / none.
+Future<String> openAutostartSettingsAndroid() async {
+  return await _methodChannel.invokeMethod<String>('openAutostartSettings') ?? 'none';
+}
+
+/// Requests exemption from battery optimization, preferring the standard system allow / deny dialog (bypassing Xiaomi's chooser).
+/// Returns android / other / appDetails / none.
+Future<String> requestIgnoreBatteryOptimizationsAndroid() async {
+  return await _methodChannel.invokeMethod<String>('requestIgnoreBatteryOptimizations') ?? 'none';
+}
+
+/// Opens Xiaomi's "Battery saver" settings, falling back to the system "App info" page. Returns miui / appDetails / none.
+Future<String> openBatterySaverSettingsAndroid() async {
+  return await _methodChannel.invokeMethod<String>('openBatterySaverSettings') ?? 'none';
+}
+
 @MappableClass()
 class PickDirectoryResult with PickDirectoryResultMappable {
   final String directoryUri;

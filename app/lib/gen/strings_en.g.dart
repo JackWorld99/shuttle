@@ -43,9 +43,10 @@ class Translations with BaseTranslations<AppLocale, Translations> {
 
   // Translations
 
-  /// en: 'LocalSend'
-  String get appName => 'LocalSend';
+  /// en: 'Shuttle'
+  String get appName => 'Shuttle';
 
+  late final Translations$shareme$en shareme = Translations$shareme$en.internal(_root);
   late final Translations$general$en general = Translations$general$en.internal(_root);
   late final Translations$receiveTab$en receiveTab = Translations$receiveTab$en.internal(_root);
   late final Translations$sendTab$en sendTab = Translations$sendTab$en.internal(_root);
@@ -73,6 +74,26 @@ class Translations with BaseTranslations<AppLocale, Translations> {
   late final Translations$tray$en tray = Translations$tray$en.internal(_root);
   late final Translations$web$en web = Translations$web$en.internal(_root);
   late final Translations$assetPicker$en assetPicker = Translations$assetPicker$en.internal(_root);
+}
+
+// Path: shareme
+class Translations$shareme$en {
+  Translations$shareme$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+  late final Translations$shareme$nav$en nav = Translations$shareme$nav$en.internal(_root);
+  late final Translations$shareme$time$en time = Translations$shareme$time$en.internal(_root);
+  late final Translations$shareme$home$en home = Translations$shareme$home$en.internal(_root);
+  late final Translations$shareme$safety$en safety = Translations$shareme$safety$en.internal(_root);
+  late final Translations$shareme$send$en send = Translations$shareme$send$en.internal(_root);
+  late final Translations$shareme$text$en text = Translations$shareme$text$en.internal(_root);
+  late final Translations$shareme$receive$en receive = Translations$shareme$receive$en.internal(_root);
+  late final Translations$shareme$history$en history = Translations$shareme$history$en.internal(_root);
+  late final Translations$shareme$pair$en pair = Translations$shareme$pair$en.internal(_root);
+  late final Translations$shareme$settings$en settings = Translations$shareme$settings$en.internal(_root);
+  late final Translations$shareme$update$en update = Translations$shareme$update$en.internal(_root);
 }
 
 // Path: general
@@ -317,9 +338,9 @@ class Translations$networkInterfacesPage$en {
   /// en: 'Network Interfaces'
   String get title => 'Network Interfaces';
 
-  /// en: 'By default, LocalSend uses all available network interfaces. You can exclude unwanted networks here. You need to restart the server to apply the changes.'
+  /// en: 'By default, Shuttle uses all available network interfaces. You can exclude unwanted networks here. You need to restart the server to apply the changes.'
   String get info =>
-      'By default, LocalSend uses all available network interfaces. You can exclude unwanted networks here. You need to restart the server to apply the changes.';
+      'By default, Shuttle uses all available network interfaces. You can exclude unwanted networks here. You need to restart the server to apply the changes.';
 
   /// en: 'Preview'
   String get preview => 'Preview';
@@ -468,8 +489,8 @@ class Translations$receiveOptionsPage$en {
   /// en: 'Save to folder'
   String get destination => _root.settingsTab.receive.destination;
 
-  /// en: '(LocalSend folder)'
-  String get appDirectory => '(LocalSend folder)';
+  /// en: '(Shuttle folder)'
+  String get appDirectory => '(Shuttle folder)';
 
   /// en: 'Save media to gallery'
   String get saveToGallery => _root.settingsTab.receive.saveToGallery;
@@ -568,8 +589,8 @@ class Translations$webSharePage$en {
   /// en: 'The PIN is "{pin}"'
   String pinHint({required Object pin}) => 'The PIN is "${pin}"';
 
-  /// en: 'LocalSend uses a self-signed certificate. You need to accept it in your browser.'
-  String get encryptionHint => 'LocalSend uses a self-signed certificate. You need to accept it in your browser.';
+  /// en: 'Shuttle uses a self-signed certificate. You need to accept it in your browser.'
+  String get encryptionHint => 'Shuttle uses a self-signed certificate. You need to accept it in your browser.';
 
   /// en: 'Pending requests: {n}'
   String pendingRequests({required Object n}) => 'Pending requests: ${n}';
@@ -595,12 +616,12 @@ class Translations$aboutPage$en {
 
   // Translations
 
-  /// en: 'About LocalSend'
-  String get title => 'About LocalSend';
+  /// en: 'About Shuttle'
+  String get title => 'About Shuttle';
 
   List<String> get description => [
-    'LocalSend is a free, open-source app that allows you to securely share files and messages with nearby devices over your local network without needing an internet connection.',
-    'This app is available on Android, iOS, macOS, Windows and Linux. You can find all download options on the official homepage.',
+    'Shuttle lets you securely share original photos, videos, files, links and text between your own devices over your local network, without needing an internet connection.',
+    'Shuttle is built on LocalSend, a free and open-source project (Apache-2.0). Thanks to the LocalSend authors and contributors listed below.',
   ];
 
   /// en: 'Author'
@@ -813,8 +834,8 @@ class Translations$tray$en {
   /// en: 'Open'
   String get open => _root.general.open;
 
-  /// en: 'Quit LocalSend'
-  String get close => 'Quit LocalSend';
+  /// en: 'Quit Shuttle'
+  String get close => 'Quit Shuttle';
 
   /// en: 'Exit'
   String get closeWindows => 'Exit';
@@ -945,6 +966,1382 @@ class Translations$assetPicker$en {
 
   /// en: 'count'
   String get sUnitAssetCountLabel => 'count';
+}
+
+// Path: shareme.nav
+class Translations$shareme$nav$en {
+  Translations$shareme$nav$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Transfer'
+  String get transfer => 'Transfer';
+
+  /// en: 'History'
+  String get history => 'History';
+
+  /// en: 'Settings'
+  String get settings => 'Settings';
+}
+
+// Path: shareme.time
+class Translations$shareme$time$en {
+  Translations$shareme$time$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'just now'
+  String get justNow => 'just now';
+
+  /// en: '{n} min ago'
+  String minutesAgo({required Object n}) => '${n} min ago';
+
+  /// en: '{n} h ago'
+  String hoursAgo({required Object n}) => '${n} h ago';
+
+  /// en: '{n} d ago'
+  String daysAgo({required Object n}) => '${n} d ago';
+}
+
+// Path: shareme.home
+class Translations$shareme$home$en {
+  Translations$shareme$home$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Scan to pair'
+  String get scanToPair => 'Scan to pair';
+
+  /// en: 'Nearby devices can find you'
+  String get meVisible => 'Nearby devices can find you';
+
+  /// en: 'Receiving is off. Nearby devices can't find you'
+  String get meHidden => 'Receiving is off. Nearby devices can\'t find you';
+
+  /// en: 'Just received'
+  String get justReceived => 'Just received';
+
+  /// en: 'All history'
+  String get allHistory => 'All history';
+
+  /// en: '{from}→this device'
+  String edgeFrom({required Object from}) => '${from}→this device';
+
+  /// en: 'original quality'
+  String get edgeOriginal => 'original quality';
+
+  /// en: 'verified'
+  String get edgeVerified => 'verified';
+
+  /// en: 'My devices'
+  String get myDevices => 'My devices';
+
+  /// en: 'Nearby'
+  String get nearby => 'Nearby';
+
+  /// en: 'not paired, needs approval'
+  String get nearbyNote => 'not paired, needs approval';
+
+  /// en: 'No devices found nearby yet. Make sure both devices are on the same Wi-Fi, then select Refresh next to Nearby.'
+  String get noNearby => 'No devices found nearby yet. Make sure both devices are on the same Wi-Fi, then select Refresh next to Nearby.';
+
+  /// en: 'Refresh'
+  String get refresh => 'Refresh';
+
+  /// en: 'Drop files here to send'
+  String get dropTitle => 'Drop files here to send';
+
+  /// en: 'or press Ctrl+V to send the clipboard'
+  String get dropHint => 'or press Ctrl+V to send the clipboard';
+
+  /// en: 'or press ⌘V to send the clipboard'
+  String get dropHintMac => 'or press ⌘V to send the clipboard';
+
+  /// en: 'Release, then choose who to send to'
+  String get dropActive => 'Release, then choose who to send to';
+
+  /// en: 'Files'
+  String get pickFiles => 'Files';
+
+  /// en: 'Folder'
+  String get pickFolder => 'Folder';
+
+  /// en: 'Text'
+  String get sendTextOrLink => 'Text';
+
+  /// en: 'Recent'
+  String get recent => 'Recent';
+
+  /// en: 'No devices in My devices yet'
+  String get emptyTitle => 'No devices in My devices yet';
+
+  /// en: 'Pair by QR code, or tap Add or Pair next to a device under Nearby.'
+  String get emptyBody => 'Pair by QR code, or tap Add or Pair next to a device under Nearby.';
+
+  /// en: 'Online'
+  String get sameWifi => 'Online';
+
+  /// en: 'Online · remote'
+  String get viaTailscale => 'Online · remote';
+
+  /// en: 'Online · remote'
+  String get crossNetwork => 'Online · remote';
+
+  /// en: 'Offline'
+  String get offline => 'Offline';
+
+  /// en: '{name} is offline'
+  String offlineTap({required Object name}) => '${name} is offline';
+
+  /// en: '{n} more offline'
+  String offlineMore({required Object n}) => '${n} more offline';
+
+  /// en: 'Add'
+  String get add => 'Add';
+
+  /// en: 'Add device'
+  String get addDevice => 'Add device';
+
+  /// en: 'Original'
+  String get original => 'Original';
+
+  /// en: 'From {name}'
+  String fromName({required Object name}) => 'From ${name}';
+
+  /// en: 'Add to My devices'
+  String get addToMine => 'Add to My devices';
+
+  /// en: 'Remove from My devices'
+  String get removeFromMine => 'Remove from My devices';
+
+  /// en: 'Not verified'
+  String get unverified => 'Not verified';
+
+  /// en: 'Verify this device'
+  String get verifyDevice => 'Verify this device';
+
+  /// en: '{time} left'
+  String remaining({required Object time}) => '${time} left';
+
+  /// en: '{n} selected · {size}'
+  String selected({required Object n, required Object size}) => '${n} selected · ${size}';
+
+  /// en: 'Tap a device to send'
+  String get selectedHint => 'Tap a device to send';
+
+  /// en: 'Clear'
+  String get clear => 'Clear';
+
+  /// en: 'Photos & videos'
+  String get sendMedia => 'Photos & videos';
+
+  /// en: 'Send to'
+  String get sendTo => 'Send to';
+
+  /// en: 'Drop here to send to {name}'
+  String dropTitleTo({required Object name}) => 'Drop here to send to ${name}';
+
+  /// en: 'Release to send to {name}'
+  String dropActiveTo({required Object name}) => 'Release to send to ${name}';
+
+  /// en: 'Files'
+  String get file => 'Files';
+
+  /// en: 'Text'
+  String get text => 'Text';
+
+  /// en: '(one) {1 item} (other) {{n} items}'
+  String edgeCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 item',
+    other: '${n} items',
+  );
+
+  /// en: '(one) {Sending 1 item} (other) {Sending {n} items}'
+  String sending({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: 'Sending 1 item',
+    other: 'Sending ${n} items',
+  );
+
+  /// en: '(one) {Waiting for 1 item to be accepted} (other) {Waiting for {n} items to be accepted}'
+  String waiting({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: 'Waiting for 1 item to be accepted',
+    other: 'Waiting for ${n} items to be accepted',
+  );
+}
+
+// Path: shareme.safety
+class Translations$shareme$safety$en {
+  Translations$shareme$safety$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'This file can run a program'
+  String get runnableTitle => 'This file can run a program';
+
+  /// en: 'To keep you safe, Shuttle doesn't open it directly. If it's yours, open it from its folder.'
+  String get runnableBody => 'To keep you safe, Shuttle doesn\'t open it directly. If it\'s yours, open it from its folder.';
+
+  /// en: 'Show in folder'
+  String get showInFolder => 'Show in folder';
+}
+
+// Path: shareme.send
+class Translations$shareme$send$en {
+  Translations$shareme$send$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Send to'
+  String get sheetTitle => 'Send to';
+
+  /// en: 'Share as a link instead'
+  String get shareLink => 'Share as a link instead';
+
+  /// en: 'Offline · can send once it's online'
+  String get offlineCannot => 'Offline · can send once it\'s online';
+
+  /// en: 'Nearby · not paired, needs approval'
+  String get nearbyNeedsApproval => 'Nearby · not paired, needs approval';
+
+  /// en: 'No devices found nearby yet. Make sure both devices are on the same Wi-Fi.'
+  String get noDevices => 'No devices found nearby yet. Make sure both devices are on the same Wi-Fi.';
+
+  /// en: 'Send to {name}'
+  String sendTo({required Object name}) => 'Send to ${name}';
+
+  /// en: 'Choose a device first'
+  String get chooseDevice => 'Choose a device first';
+
+  /// en: 'Waiting for {name} to accept'
+  String waitingTitle({required Object name}) => 'Waiting for ${name} to accept';
+
+  /// en: 'Tap Accept on {name}. It starts automatically if {name} accepts files automatically.'
+  String waitingBody({required Object name}) => 'Tap Accept on ${name}. It starts automatically if ${name} accepts files automatically.';
+
+  /// en: 'Cancel'
+  String get cancel => 'Cancel';
+
+  /// en: 'Sending to'
+  String get sendingTo => 'Sending to';
+
+  /// en: 'item {i} / {n}'
+  String fileIndex({required Object i, required Object n}) => 'item ${i} / ${n}';
+
+  /// en: 'Files'
+  String get files => 'Files';
+
+  /// en: 'encrypted'
+  String get encrypted => 'encrypted';
+
+  /// en: 'not encrypted'
+  String get notEncrypted => 'not encrypted';
+
+  /// en: 'Leaving this page won't stop the transfer. Progress is shown in the notification.'
+  String get leaveHint => 'Leaving this page won\'t stop the transfer. Progress is shown in the notification.';
+
+  /// en: 'Cancel sending'
+  String get cancelSend => 'Cancel sending';
+
+  /// en: 'waiting'
+  String get queued => 'waiting';
+
+  /// en: 'failed'
+  String get failed => 'failed';
+
+  /// en: 'Done'
+  String get done => 'Done';
+
+  /// en: 'Send more'
+  String get sendMore => 'Send more';
+
+  /// en: 'Delivered to'
+  String get deliveredTo => 'Delivered to';
+
+  /// en: 'size'
+  String get statSize => 'size';
+
+  /// en: 'time'
+  String get statTime => 'time';
+
+  /// en: 'avg speed'
+  String get statSpeed => 'avg speed';
+
+  /// en: 'Originals'
+  String get originalTitle => 'Originals';
+
+  /// en: 'The original files were sent without compression, each with its SHA-256 so the receiver can verify it.'
+  String get originalWithHash => 'The original files were sent without compression, each with its SHA-256 so the receiver can verify it.';
+
+  /// en: 'The original files were sent without compression.'
+  String get originalNoHash => 'The original files were sent without compression.';
+
+  /// en: 'original'
+  String get originalBadge => 'original';
+
+  /// en: 'Resend the failed files'
+  String get retry => 'Resend the failed files';
+
+  /// en: '{name} declined the transfer'
+  String declined({required Object name}) => '${name} declined the transfer';
+
+  /// en: '{name} is receiving other files. Try again later'
+  String busy({required Object name}) => '${name} is receiving other files. Try again later';
+
+  /// en: 'Too many wrong PIN attempts. Try again later'
+  String get tooMany => 'Too many wrong PIN attempts. Try again later';
+
+  /// en: '{name} canceled the transfer'
+  String canceledByReceiver({required Object name}) => '${name} canceled the transfer';
+
+  /// en: 'Sending canceled'
+  String get canceledBySender => 'Sending canceled';
+
+  /// en: 'Couldn't send to {name}'
+  String notSent({required Object name}) => 'Couldn\'t send to ${name}';
+
+  /// en: 'Not sent, for your safety: it isn't using an encrypted connection, so someone on this Wi-Fi may be impersonating it.'
+  String get insecure => 'Not sent, for your safety: it isn\'t using an encrypted connection, so someone on this Wi-Fi may be impersonating it.';
+
+  /// en: '{name} couldn't be reached. Check that Shuttle is open there; when you're not on the same Wi-Fi, both devices need Tailscale on.'
+  String notSentHint({required Object name}) =>
+      '${name} couldn\'t be reached. Check that Shuttle is open there; when you\'re not on the same Wi-Fi, both devices need Tailscale on.';
+
+  /// en: 'Can't reach {name}. It may be asleep, or Shuttle isn't open.'
+  String notSentReason({required Object name}) => 'Can\'t reach ${name}. It may be asleep, or Shuttle isn\'t open.';
+
+  /// en: 'Can't reach {name}. When you're not on the same Wi-Fi, both devices need Tailscale on.'
+  String notSentReasonRemote({required Object name}) => 'Can\'t reach ${name}. When you\'re not on the same Wi-Fi, both devices need Tailscale on.';
+
+  /// en: 'Details'
+  String get details => 'Details';
+
+  /// en: 'Going back in 2 seconds'
+  String get autoBack => 'Going back in 2 seconds';
+
+  /// en: 'Retrying automatically (attempt {n})'
+  String autoRetrying({required Object n}) => 'Retrying automatically (attempt ${n})';
+
+  /// en: 'Connecting…'
+  String get connecting => 'Connecting…';
+
+  /// en: 'Preparing {curr}/{n}'
+  String preparing({required Object curr, required Object n}) => 'Preparing ${curr}/${n}';
+
+  /// en: 'Retry'
+  String get retryAll => 'Retry';
+
+  /// en: 'Back'
+  String get back => 'Back';
+
+  /// en: '(one) {1 item · {size} · original quality} (other) {{n} items · {size} · original quality}'
+  String sheetSummary({required num n, required Object size}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 item · ${size} · original quality',
+    other: '${n} items · ${size} · original quality',
+  );
+
+  /// en: '(one) {1 item. The receiver got the original.} (other) {{n} items. The receiver got the originals.}'
+  String deliveredBody({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 item. The receiver got the original.',
+    other: '${n} items. The receiver got the originals.',
+  );
+
+  /// en: '(one) {1 file was not sent} (other) {{n} files were not sent}'
+  String failedTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 file was not sent',
+    other: '${n} files were not sent',
+  );
+}
+
+// Path: shareme.text
+class Translations$shareme$text$en {
+  Translations$shareme$text$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Send text or a link'
+  String get sheetTitle => 'Send text or a link';
+
+  /// en: 'Send clipboard to my device'
+  String get clipTray => 'Send clipboard to my device';
+
+  /// en: 'The clipboard is empty'
+  String get clipEmpty => 'The clipboard is empty';
+
+  /// en: 'Copied, from {name}'
+  String snackCopied({required Object name}) => 'Copied, from ${name}';
+
+  /// en: 'Link from {name}'
+  String snackLink({required Object name}) => 'Link from ${name}';
+
+  /// en: 'View'
+  String get snackView => 'View';
+
+  /// en: 'Open'
+  String get snackOpen => 'Open';
+
+  /// en: 'From My devices, copied automatically'
+  String get autoCopied => 'From My devices, copied automatically';
+
+  /// en: 'There is a link on your clipboard'
+  String get clipboardLink => 'There is a link on your clipboard';
+
+  /// en: 'There is text on your clipboard'
+  String get clipboardText => 'There is text on your clipboard';
+
+  /// en: 'Paste'
+  String get paste => 'Paste';
+
+  /// en: 'Type the text or link to send'
+  String get hint => 'Type the text or link to send';
+
+  /// en: 'Send to'
+  String get sendTo => 'Send to';
+
+  /// en: 'Send'
+  String get send => 'Send';
+
+  /// en: 'sent you a link'
+  String get receivedLink => 'sent you a link';
+
+  /// en: 'sent you some text'
+  String get receivedText => 'sent you some text';
+
+  /// en: 'Shuttle won't open this address in the background or fetch its title and images (that would reveal your IP to the website).'
+  String get linkNote =>
+      'Shuttle won\'t open this address in the background or fetch its title and images (that would reveal your IP to the website).';
+
+  /// en: 'Copy'
+  String get copy => 'Copy';
+
+  /// en: 'Copied'
+  String get copied => 'Copied';
+
+  /// en: 'Open link'
+  String get openLink => 'Open link';
+
+  /// en: 'Close'
+  String get close => 'Close';
+
+  /// en: 'Saved to history'
+  String get savedToHistory => 'Saved to history';
+
+  /// en: 'Sent to {name}'
+  String sentTo({required Object name}) => 'Sent to ${name}';
+
+  /// en: '(one) {1 char} (other) {{n} chars}'
+  String count({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 char',
+    other: '${n} chars',
+  );
+}
+
+// Path: shareme.receive
+class Translations$shareme$receive$en {
+  Translations$shareme$receive$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'My device · certificate fingerprint matches'
+  String get mineVerified => 'My device · certificate fingerprint matches';
+
+  /// en: 'My device · not encrypted, identity can't be confirmed'
+  String get mineUnencrypted => 'My device · not encrypted, identity can\'t be confirmed';
+
+  /// en: 'My device · not verified, so you're asked each time'
+  String get mineUnchecked => 'My device · not verified, so you\'re asked each time';
+
+  /// en: 'Accept automatically from verified devices'
+  String get autoAcceptVerified => 'Accept automatically from verified devices';
+
+  /// en: 'Device fingerprint'
+  String get fingerprint => 'Device fingerprint';
+
+  /// en: 'This device is not in My devices.'
+  String get strangerTitle => 'This device is not in My devices.';
+
+  /// en: 'Only accept if you know this device. You can add frequently used devices to My devices on the home screen.'
+  String get strangerBody => 'Only accept if you know this device. You can add frequently used devices to My devices on the home screen.';
+
+  /// en: 'This connection is not encrypted. People on the same Wi-Fi may be able to see the content.'
+  String get unencrypted => 'This connection is not encrypted. People on the same Wi-Fi may be able to see the content.';
+
+  /// en: 'Contents'
+  String get contents => 'Contents';
+
+  /// en: 'original quality'
+  String get original => 'original quality';
+
+  /// en: 'Accept automatically from My devices'
+  String get autoAccept => 'Accept automatically from My devices';
+
+  /// en: 'Decline'
+  String get decline => 'Decline';
+
+  /// en: 'Accept'
+  String get accept => 'Accept';
+
+  /// en: 'The sender canceled'
+  String get canceledBySender => 'The sender canceled';
+
+  /// en: 'Close'
+  String get close => 'Close';
+
+  /// en: 'Getting ready to receive…'
+  String get preparing => 'Getting ready to receive…';
+
+  /// en: 'Receiving from'
+  String get receivingFrom => 'Receiving from';
+
+  /// en: 'from {name} · took {time} · avg {speed}'
+  String receivedFrom({required Object name, required Object time, required Object speed}) => 'from ${name} · took ${time} · avg ${speed}';
+
+  /// en: 'Where they were saved'
+  String get whereSaved => 'Where they were saved';
+
+  /// en: 'Saved to gallery'
+  String get savedToGallery => 'Saved to gallery';
+
+  /// en: 'Open'
+  String get open => 'Open';
+
+  /// en: 'View in gallery'
+  String get viewInGallery => 'View in gallery';
+
+  /// en: 'Open folder'
+  String get openFolder => 'Open folder';
+
+  /// en: 'Cancel receiving'
+  String get cancelReceive => 'Cancel receiving';
+
+  /// en: 'Accept from this device automatically from now on'
+  String get popupRemember => 'Accept from this device automatically from now on';
+
+  /// en: 'Not in My devices. Only accept if you know this device.'
+  String get popupStranger => 'Not in My devices. Only accept if you know this device.';
+
+  /// en: 'Press Esc to decide later'
+  String get popupEsc => 'Press Esc to decide later';
+
+  /// en: 'item {i} of {n}'
+  String popupFileOf({required Object i, required Object n}) => 'item ${i} of ${n}';
+
+  /// en: 'Receiving'
+  String get popupReceiving => 'Receiving';
+
+  /// en: '{time} left'
+  String popupLeft({required Object time}) => '${time} left';
+
+  /// en: 'Saved to {path}'
+  String popupSavedTo({required Object path}) => 'Saved to ${path}';
+
+  /// en: '(one) {wants to send you 1 item, {size} in total} (other) {wants to send you {n} items, {size} in total}'
+  String wantsToSend({required num n, required Object size}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: 'wants to send you 1 item, ${size} in total',
+    other: 'wants to send you ${n} items, ${size} in total',
+  );
+
+  /// en: '(one) {1 photo} (other) {{n} photos}'
+  String photos({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 photo',
+    other: '${n} photos',
+  );
+
+  /// en: '(one) {1 video} (other) {{n} videos}'
+  String videos({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 video',
+    other: '${n} videos',
+  );
+
+  /// en: '(one) {1 file} (other) {{n} files}'
+  String files({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 file',
+    other: '${n} files',
+  );
+
+  /// en: '(one) {Received 1 item} (other) {Received {n} items}'
+  String receivedTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: 'Received 1 item',
+    other: 'Received ${n} items',
+  );
+
+  /// en: '(one) {Photos & videos · 1 item} (other) {Photos & videos · {n} items}'
+  String mediaItems({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: 'Photos & videos · 1 item',
+    other: 'Photos & videos · ${n} items',
+  );
+
+  /// en: '(one) {1 file was not received} (other) {{n} files were not received}'
+  String failedTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 file was not received',
+    other: '${n} files were not received',
+  );
+
+  /// en: '(one) {Received 1 item from {name}} (other) {Received {n} items from {name}}'
+  String quickSaved({required num n, required Object name}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: 'Received 1 item from ${name}',
+    other: 'Received ${n} items from ${name}',
+  );
+}
+
+// Path: shareme.history
+class Translations$shareme$history$en {
+  Translations$shareme$history$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'History'
+  String get title => 'History';
+
+  /// en: 'All'
+  String get all => 'All';
+
+  /// en: 'Photos & videos'
+  String get media => 'Photos & videos';
+
+  /// en: 'Files'
+  String get files => 'Files';
+
+  /// en: 'Text & links'
+  String get texts => 'Text & links';
+
+  /// en: 'Today'
+  String get today => 'Today';
+
+  /// en: 'Yesterday'
+  String get yesterday => 'Yesterday';
+
+  /// en: 'From'
+  String get from => 'From';
+
+  /// en: 'To'
+  String get to => 'To';
+
+  /// en: ' (not paired)'
+  String get unpaired => ' (not paired)';
+
+  /// en: 'Not sent: {reason}'
+  String sendFailed({required Object reason}) => 'Not sent: ${reason}';
+
+  /// en: 'declined'
+  String get reasonDeclined => 'declined';
+
+  /// en: 'canceled by receiver'
+  String get reasonCanceledByReceiver => 'canceled by receiver';
+
+  /// en: 'you canceled'
+  String get reasonCanceledBySender => 'you canceled';
+
+  /// en: 'receiver busy'
+  String get reasonBusy => 'receiver busy';
+
+  /// en: 'too many wrong PINs'
+  String get reasonPin => 'too many wrong PINs';
+
+  /// en: 'error'
+  String get reasonError => 'error';
+
+  /// en: 'Nothing sent or received yet'
+  String get emptyTitle => 'Nothing sent or received yet';
+
+  /// en: 'Everything you receive and send shows up here.'
+  String get emptyBody => 'Everything you receive and send shows up here.';
+
+  /// en: 'Send photos & videos'
+  String get emptyAction => 'Send photos & videos';
+
+  /// en: 'Send files'
+  String get emptyActionFiles => 'Send files';
+
+  /// en: 'Nothing in this category yet.'
+  String get emptyFilter => 'Nothing in this category yet.';
+
+  /// en: 'Search'
+  String get search => 'Search';
+
+  /// en: 'Search files, text or devices'
+  String get searchHint => 'Search files, text or devices';
+
+  /// en: 'Nothing found'
+  String get searchEmpty => 'Nothing found';
+
+  /// en: 'History is off, so new transfers are not recorded. Turn on "Save to history" in settings.'
+  String get off => 'History is off, so new transfers are not recorded. Turn on "Save to history" in settings.';
+
+  /// en: 'Clear history'
+  String get clearAll => 'Clear history';
+
+  /// en: 'Clear all history?'
+  String get clearAllTitle => 'Clear all history?';
+
+  /// en: 'Only the records are removed. Received files stay.'
+  String get clearAllBody => 'Only the records are removed. Received files stay.';
+
+  /// en: 'Delete this record?'
+  String get deleteTitle => 'Delete this record?';
+
+  /// en: 'Only the record is removed. The files stay.'
+  String get deleteBody => 'Only the record is removed. The files stay.';
+
+  /// en: 'Delete'
+  String get delete => 'Delete';
+
+  /// en: 'Delete this record'
+  String get deleteRecord => 'Delete this record';
+
+  /// en: 'Cancel'
+  String get cancel => 'Cancel';
+
+  /// en: 'From {name} · {time}'
+  String fromAt({required Object name, required Object time}) => 'From ${name} · ${time}';
+
+  /// en: 'To {name} · {time}'
+  String toAt({required Object name, required Object time}) => 'To ${name} · ${time}';
+
+  /// en: 'Link sent to {name}'
+  String sentLink({required Object name}) => 'Link sent to ${name}';
+
+  /// en: 'Text sent to {name}'
+  String sentText({required Object name}) => 'Text sent to ${name}';
+
+  /// en: 'Link from {name}'
+  String receivedLink({required Object name}) => 'Link from ${name}';
+
+  /// en: 'Text from {name}'
+  String receivedText({required Object name}) => 'Text from ${name}';
+
+  /// en: 'not sent'
+  String get notDelivered => 'not sent';
+
+  /// en: 'To {name}'
+  String edgeTo({required Object name}) => 'To ${name}';
+
+  /// en: '(one) {1 photo or video} (other) {{n} photos & videos}'
+  String mediaCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 photo or video',
+    other: '${n} photos & videos',
+  );
+
+  /// en: '(one) {1 file} (other) {{n} files}'
+  String fileCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 file',
+    other: '${n} files',
+  );
+
+  /// en: '(one) {1 item} (other) {{n} items}'
+  String itemCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 item',
+    other: '${n} items',
+  );
+
+  /// en: '(one) {1 item not sent} (other) {{n} items not sent}'
+  String partFailed({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 item not sent',
+    other: '${n} items not sent',
+  );
+
+  /// en: '(one) {Sent 1 item} (other) {Sent {n} items}'
+  String sentTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: 'Sent 1 item',
+    other: 'Sent ${n} items',
+  );
+}
+
+// Path: shareme.pair
+class Translations$shareme$pair$en {
+  Translations$shareme$pair$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Pair a new device'
+  String get hostTitle => 'Pair a new device';
+
+  /// en: 'On your phone, open Shuttle, tap the scan button at the top right of the home screen, and point it at this code.'
+  String get pairHostHint => 'On your phone, open Shuttle, tap the scan button at the top right of the home screen, and point it at this code.';
+
+  /// en: 'The code works once, for 5 minutes, and doesn't contain this computer's name.'
+  String get hostOneUse => 'The code works once, for 5 minutes, and doesn\'t contain this computer\'s name.';
+
+  /// en: 'Expires in {time}'
+  String expiresIn({required Object time}) => 'Expires in ${time}';
+
+  /// en: 'This code has expired'
+  String get expired => 'This code has expired';
+
+  /// en: 'New code'
+  String get newCode => 'New code';
+
+  /// en: 'This computer isn't on a local network, so your phone can't reach it. Connect to Wi-Fi or Ethernet first.'
+  String get noNetwork => 'This computer isn\'t on a local network, so your phone can\'t reach it. Connect to Wi-Fi or Ethernet first.';
+
+  /// en: 'Couldn't start pairing: {error}'
+  String startFailed({required Object error}) => 'Couldn\'t start pairing: ${error}';
+
+  /// en: 'Check the pairing seal'
+  String get verifyTitle => 'Check the pairing seal';
+
+  /// en: 'Look at your phone. Only if its seal and 12 digits match these exactly, select "Same, pair". If they differ, another device used this code first.'
+  String get verifyHost =>
+      'Look at your phone. Only if its seal and 12 digits match these exactly, select "Same, pair". If they differ, another device used this code first.';
+
+  /// en: 'Look at your computer. Only if its seal and 12 digits match these exactly, tap "Same, pair".'
+  String get verifyGuest => 'Look at your computer. Only if its seal and 12 digits match these exactly, tap "Same, pair".';
+
+  /// en: '{name} · {model}'
+  String peerLine({required Object name, required Object model}) => '${name} · ${model}';
+
+  /// en: 'Same, pair'
+  String get sameHost => 'Same, pair';
+
+  /// en: 'Same, pair'
+  String get sameGuest => 'Same, pair';
+
+  /// en: 'Different'
+  String get different => 'Different';
+
+  /// en: 'Waiting for the phone to confirm…'
+  String get waitPhone => 'Waiting for the phone to confirm…';
+
+  /// en: 'Waiting for the computer to confirm…'
+  String get waitComputer => 'Waiting for the computer to confirm…';
+
+  /// en: 'Name it'
+  String get nameIt => 'Name it';
+
+  /// en: 'Another device scanned this code. If the device you're checking isn't your phone, select "Different".'
+  String get intruder => 'Another device scanned this code. If the device you\'re checking isn\'t your phone, select "Different".';
+
+  /// en: 'Paired'
+  String get doneTitle => 'Paired';
+
+  /// en: 'From now on, on the same Wi-Fi, the two devices find each other. Files from {name} are accepted automatically; you can change this in Settings.'
+  String doneAuto({required Object name}) =>
+      'From now on, on the same Wi-Fi, the two devices find each other. Files from ${name} are accepted automatically; you can change this in Settings.';
+
+  /// en: 'From now on, on the same Wi-Fi, the two devices find each other. Files from {name} still ask you first; you can accept them automatically in Settings.'
+  String doneAsk({required Object name}) =>
+      'From now on, on the same Wi-Fi, the two devices find each other. Files from ${name} still ask you first; you can accept them automatically in Settings.';
+
+  /// en: 'Done'
+  String get done => 'Done';
+
+  /// en: 'Scan again'
+  String get tryAgain => 'Scan again';
+
+  /// en: 'Canceled. Not paired.'
+  String get failRejectedHere => 'Canceled. Not paired.';
+
+  /// en: 'The other device said they're different. Not paired.'
+  String get failRejectedPeer => 'The other device said they\'re different. Not paired.';
+
+  /// en: 'This code was already used by another device. Make a new code on the computer and scan again.'
+  String get failUsed => 'This code was already used by another device. Make a new code on the computer and scan again.';
+
+  /// en: 'The code expired. Make a new one on the computer and scan again.'
+  String get failExpired => 'The code expired. Make a new one on the computer and scan again.';
+
+  /// en: 'Can't reach the computer. Make sure both devices are on the same Wi-Fi and the pairing page is still open on the computer.'
+  String get failUnreachable =>
+      'Can\'t reach the computer. Make sure both devices are on the same Wi-Fi and the pairing page is still open on the computer.';
+
+  /// en: 'The computer's identity check failed, so pairing stopped. Someone may be impersonating it.'
+  String get failIdentity => 'The computer\'s identity check failed, so pairing stopped. Someone may be impersonating it.';
+
+  /// en: 'Nobody confirmed in time. Not paired.'
+  String get failTimeout => 'Nobody confirmed in time. Not paired.';
+
+  /// en: 'Pairing didn't finish (the messages didn't match). Scan again.'
+  String get failProtocol => 'Pairing didn\'t finish (the messages didn\'t match). Scan again.';
+
+  /// en: 'Scan to pair'
+  String get scanTitle => 'Scan to pair';
+
+  /// en: 'Fit the QR code on your computer screen in the frame'
+  String get scanFrame => 'Fit the QR code on your computer screen in the frame';
+
+  /// en: 'How to show the code on your computer'
+  String get scanHowTitle => 'How to show the code on your computer';
+
+  /// en: 'Open Shuttle on your computer, click "Add device", then point this phone at the code on the screen.'
+  String get scanHowBody => 'Open Shuttle on your computer, click "Add device", then point this phone at the code on the screen.';
+
+  /// en: 'That's not a Shuttle pairing code'
+  String get notOurCode => 'That\'s not a Shuttle pairing code';
+
+  /// en: 'Connecting to the computer…'
+  String get connecting => 'Connecting to the computer…';
+
+  /// en: 'Can't open the camera: {error}'
+  String cameraError({required Object error}) => 'Can\'t open the camera: ${error}';
+
+  /// en: 'Verified'
+  String get verified => 'Verified';
+
+  /// en: 'Another computer: under Nearby on its home screen, click Pair next to this computer.'
+  String get nearbyHostHint => 'Another computer: under Nearby on its home screen, click Pair next to this computer.';
+
+  /// en: 'Pair'
+  String get nearbyButton => 'Pair';
+
+  /// en: 'Pair with {name}'
+  String nearbyTitle({required Object name}) => 'Pair with ${name}';
+
+  /// en: 'Connecting to {name}…'
+  String nearbyConnecting({required Object name}) => 'Connecting to ${name}…';
+
+  /// en: 'On {name}, open Shuttle and click Pair next to this computer under Nearby (or click Add device). This continues on its own as soon as you do.'
+  String nearbyOpenOther({required Object name}) =>
+      'On ${name}, open Shuttle and click Pair next to this computer under Nearby (or click Add device). This continues on its own as soon as you do.';
+
+  /// en: 'Not Shuttle on the other side? Add without checking'
+  String get nearbyAddPlain => 'Not Shuttle on the other side? Add without checking';
+
+  /// en: 'Look at the screen of {name}: only click Same, pair if the seal and all 12 digits match exactly.'
+  String verifyNearby({required Object name}) => 'Look at the screen of ${name}: only click Same, pair if the seal and all 12 digits match exactly.';
+
+  /// en: 'Look at the screen of {name}: only click Same, pair if the seal and all 12 digits match exactly. If they differ, another device is pretending to be it.'
+  String verifyHostNearby({required Object name}) =>
+      'Look at the screen of ${name}: only click Same, pair if the seal and all 12 digits match exactly. If they differ, another device is pretending to be it.';
+
+  /// en: 'Waiting for {name} to confirm…'
+  String waitPeer({required Object name}) => 'Waiting for ${name} to confirm…';
+
+  /// en: 'Try again'
+  String get tryAgainShort => 'Try again';
+
+  /// en: '{name} is pairing with another device. Try again in a moment.'
+  String failNearbyBusy({required Object name}) => '${name} is pairing with another device. Try again in a moment.';
+
+  /// en: 'Can't reach {name}. On it, click Pair next to this computer (or open Add device), and make sure both computers are on the same network.'
+  String failNearbyUnreachable({required Object name}) =>
+      'Can\'t reach ${name}. On it, click Pair next to this computer (or open Add device), and make sure both computers are on the same network.';
+
+  /// en: 'The pairing page on {name} timed out. Open Add device on {name} again, then click Try again.'
+  String failNearbyExpired({required Object name}) =>
+      'The pairing page on ${name} timed out. Open Add device on ${name} again, then click Try again.';
+
+  /// en: '{name} wants to pair with this computer'
+  String requestTitle({required Object name}) => '${name} wants to pair with this computer';
+
+  /// en: 'Accept only if you just clicked Pair on {name}. If you don't recognise it, select Ignore. Phones can still scan the code below.'
+  String requestHint({required Object name}) =>
+      'Accept only if you just clicked Pair on ${name}. If you don\'t recognise it, select Ignore. Phones can still scan the code below.';
+
+  /// en: 'Accept'
+  String get requestAccept => 'Accept';
+
+  /// en: 'Ignore'
+  String get requestIgnore => 'Ignore';
+
+  /// en: 'Pairing request sent. On {name}, select Accept.'
+  String nearbyWaitAccept({required Object name}) => 'Pairing request sent. On ${name}, select Accept.';
+
+  /// en: '{name} ignored the request. Not paired.'
+  String failNearbyDeclined({required Object name}) => '${name} ignored the request. Not paired.';
+
+  /// en: 'The other device didn't accept. Not paired.'
+  String get failDeclined => 'The other device didn\'t accept. Not paired.';
+
+  /// en: 'A phone scanned this code, but this computer is checking with {name}. If you meant to pair that phone, select "Different", then show it a new code.'
+  String intruderNearby({required Object name}) =>
+      'A phone scanned this code, but this computer is checking with ${name}. If you meant to pair that phone, select "Different", then show it a new code.';
+}
+
+// Path: shareme.settings
+class Translations$shareme$settings$en {
+  Translations$shareme$settings$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Settings'
+  String get title => 'Settings';
+
+  /// en: 'Fingerprint {fp}'
+  String fingerprint({required Object fp}) => 'Fingerprint ${fp}';
+
+  /// en: 'Rename'
+  String get rename => 'Rename';
+
+  /// en: 'The name nearby devices see'
+  String get renameHint => 'The name nearby devices see';
+
+  /// en: 'Save'
+  String get save => 'Save';
+
+  /// en: 'Cancel'
+  String get cancel => 'Cancel';
+
+  /// en: 'Receive'
+  String get receive => 'Receive';
+
+  /// en: 'When files arrive'
+  String get whenReceiving => 'When files arrive';
+
+  /// en: 'Accept from my devices, ask for others'
+  String get modeFavorites => 'Accept from my devices, ask for others';
+
+  /// en: 'Always ask me'
+  String get modeAsk => 'Always ask me';
+
+  /// en: 'My devices: automatic'
+  String get modeFavoritesShort => 'My devices: automatic';
+
+  /// en: 'Accept from verified devices, ask for others'
+  String get modeVerified => 'Accept from verified devices, ask for others';
+
+  /// en: 'Verified: automatic'
+  String get modeVerifiedShort => 'Verified: automatic';
+
+  /// en: 'Verify'
+  String get verify => 'Verify';
+
+  /// en: 'Always ask'
+  String get modeAskShort => 'Always ask';
+
+  /// en: 'Everyone: automatic'
+  String get modeAllShort => 'Everyone: automatic';
+
+  /// en: 'Save to'
+  String get saveTo => 'Save to';
+
+  /// en: 'Downloads'
+  String get defaultDownloads => 'Downloads';
+
+  /// en: 'Save photos to gallery'
+  String get galleryShort => 'Save photos to gallery';
+
+  /// en: 'Keep photo location'
+  String get keepLocationShort => 'Keep photo location';
+
+  /// en: 'On'
+  String get turnedOn => 'On';
+
+  /// en: 'Turn on'
+  String get turnOn => 'Turn on';
+
+  /// en: '{n} left'
+  String missing({required Object n}) => '${n} left';
+
+  /// en: 'View'
+  String get view => 'View';
+
+  /// en: 'General'
+  String get general => 'General';
+
+  /// en: 'Start at sign-in'
+  String get autoStart => 'Start at sign-in';
+
+  /// en: 'Waits in the tray after you sign in, ready to receive'
+  String get autoStartNote => 'Waits in the tray after you sign in, ready to receive';
+
+  /// en: 'More'
+  String get moreShort => 'More';
+
+  /// en: 'Advanced settings'
+  String get localsendSettings => 'Advanced settings';
+
+  /// en: 'Port, encryption and more'
+  String get localsendSettingsNote => 'Port, encryption and more';
+
+  /// en: 'Keep history'
+  String get saveToHistoryShort => 'Keep history';
+
+  /// en: 'Tailscale'
+  String get tailscaleRow => 'Tailscale';
+
+  /// en: 'Connected'
+  String get tailscaleConnected => 'Connected';
+
+  /// en: 'Not connected'
+  String get tailscaleNotConnected => 'Not connected';
+
+  /// en: 'Install Tailscale on both devices with the same account. When they're not on the same Wi-Fi, Shuttle connects through it (encrypted, no third-party server).'
+  String get crossNetworkNote =>
+      'Install Tailscale on both devices with the same account. When they\'re not on the same Wi-Fi, Shuttle connects through it (encrypted, no third-party server).';
+
+  /// en: 'This device'
+  String get thisDevice => 'This device';
+
+  /// en: 'Fingerprint'
+  String get fingerprintLabel => 'Fingerprint';
+
+  /// en: 'Xiaomi needs two more settings. Shuttle can't read them, so tap to check.'
+  String get backgroundPageNote => 'Xiaomi needs two more settings. Shuttle can\'t read them, so tap to check.';
+
+  /// en: 'Accept from every device'
+  String get modeAll => 'Accept from every device';
+
+  /// en: 'Not recommended: anyone on the same Wi-Fi can save files to your phone'
+  String get modeAllWarn => 'Not recommended: anyone on the same Wi-Fi can save files to your phone';
+
+  /// en: 'Save location'
+  String get saveLocation => 'Save location';
+
+  /// en: 'Reset'
+  String get resetLocation => 'Reset';
+
+  /// en: 'Download (default)'
+  String get defaultLocation => 'Download (default)';
+
+  /// en: 'Save photos and videos to gallery'
+  String get saveToGallery => 'Save photos and videos to gallery';
+
+  /// en: 'When off, photos and videos go to the save location above'
+  String get saveToGalleryNote => 'When off, photos and videos go to the save location above';
+
+  /// en: 'Keep photo location'
+  String get keepLocation => 'Keep photo location';
+
+  /// en: 'Allowed to read the location stored in photos'
+  String get keepLocationOn => 'Allowed to read the location stored in photos';
+
+  /// en: 'Needs the "media location" permission, otherwise Android removes the location from photos'
+  String get keepLocationOff => 'Needs the "media location" permission, otherwise Android removes the location from photos';
+
+  /// en: 'Save to history'
+  String get saveToHistory => 'Save to history';
+
+  /// en: 'Receive from a browser'
+  String get receiveLink => 'Receive from a browser';
+
+  /// en: 'A link for devices without Shuttle'
+  String get receiveLinkNote => 'A link for devices without Shuttle';
+
+  /// en: 'Require a PIN to receive'
+  String get receivePin => 'Require a PIN to receive';
+
+  /// en: 'Every device must enter it before sending'
+  String get receivePinNote => 'Every device must enter it before sending';
+
+  /// en: 'Everything you receive and send is listed in History'
+  String get saveToHistoryNote => 'Everything you receive and send is listed in History';
+
+  /// en: 'Background receiving'
+  String get background => 'Background receiving';
+
+  /// en: 'Xiaomi needs extra setup'
+  String get backgroundNote => 'Xiaomi needs extra setup';
+
+  /// en: 'Notifications'
+  String get notifications => 'Notifications';
+
+  /// en: 'Allowed, used for incoming requests and progress'
+  String get notificationsOn => 'Allowed, used for incoming requests and progress';
+
+  /// en: 'Not allowed: you won't see requests in the background'
+  String get notificationsOff => 'Not allowed: you won\'t see requests in the background';
+
+  /// en: 'No battery optimization'
+  String get battery => 'No battery optimization';
+
+  /// en: 'Done'
+  String get batteryOn => 'Done';
+
+  /// en: 'Not set: Android may stop Shuttle in the background'
+  String get batteryOff => 'Not set: Android may stop Shuttle in the background';
+
+  /// en: 'Allow autostart'
+  String get autostart => 'Allow autostart';
+
+  /// en: 'Xiaomi doesn't let apps read this; tap to check'
+  String get autostartNote => 'Xiaomi doesn\'t let apps read this; tap to check';
+
+  /// en: 'Battery saver: No restrictions'
+  String get powerSaver => 'Battery saver: No restrictions';
+
+  /// en: 'Xiaomi doesn't let apps read this; tap to check'
+  String get powerSaverNote => 'Xiaomi doesn\'t let apps read this; tap to check';
+
+  /// en: 'Note: once the app is swiped away or cleaned up by the system, it can't receive. Always-on background receiving is still in development.'
+  String get backgroundLimit =>
+      'Note: once the app is swiped away or cleaned up by the system, it can\'t receive. Always-on background receiving is still in development.';
+
+  /// en: 'Couldn't open the Xiaomi page, opened App info instead'
+  String get openedAppDetails => 'Couldn\'t open the Xiaomi page, opened App info instead';
+
+  /// en: 'My devices'
+  String get devices => 'My devices';
+
+  /// en: 'None yet. Pair by QR code, or tap Add or Pair under Nearby on the home page.'
+  String get devicesEmpty => 'None yet. Pair by QR code, or tap Add or Pair under Nearby on the home page.';
+
+  /// en: 'Online'
+  String get online => 'Online';
+
+  /// en: 'Offline'
+  String get offline => 'Offline';
+
+  /// en: 'Pair a new device'
+  String get pairNew => 'Pair a new device';
+
+  /// en: 'Scan the QR code on your computer'
+  String get pairNewNote => 'Scan the QR code on your computer';
+
+  /// en: 'Scan this computer's QR code with your phone'
+  String get pairNewDesktopNote => 'Scan this computer\'s QR code with your phone';
+
+  /// en: 'Remove {name} from my devices?'
+  String removeTitle({required Object name}) => 'Remove ${name} from my devices?';
+
+  /// en: 'Files from it will need your confirmation again.'
+  String get removeBody => 'Files from it will need your confirmation again.';
+
+  /// en: 'Remove'
+  String get remove => 'Remove';
+
+  /// en: 'Appearance'
+  String get appearance => 'Appearance';
+
+  /// en: 'Theme'
+  String get theme => 'Theme';
+
+  /// en: 'System'
+  String get themeSystem => 'System';
+
+  /// en: 'Light'
+  String get themeLight => 'Light';
+
+  /// en: 'Dark'
+  String get themeDark => 'Dark';
+
+  /// en: 'Language'
+  String get language => 'Language';
+
+  /// en: 'System'
+  String get languageSystem => 'System';
+
+  /// en: 'Across networks'
+  String get crossNetwork => 'Across networks';
+
+  /// en: 'Transfer on mobile data'
+  String get mobileData => 'Transfer on mobile data';
+
+  /// en: 'Install Tailscale on both devices, sign in with the same account, then pair by QR code once. When they're not on the same Wi-Fi, they'll connect through Tailscale automatically (encrypted, no server of ours involved).'
+  String get mobileDataNote =>
+      'Install Tailscale on both devices, sign in with the same account, then pair by QR code once. When they\'re not on the same Wi-Fi, they\'ll connect through Tailscale automatically (encrypted, no server of ours involved).';
+
+  /// en: 'This device is on Tailscale: {ip}'
+  String tailscaleOn({required Object ip}) => 'This device is on Tailscale: ${ip}';
+
+  /// en: 'This device isn't on Tailscale yet'
+  String get tailscaleOff => 'This device isn\'t on Tailscale yet';
+
+  /// en: 'About'
+  String get about => 'About';
+
+  /// en: 'Version'
+  String get version => 'Version';
+
+  /// en: 'Based on LocalSend {base}'
+  String basedOn({required Object base}) => 'Based on LocalSend ${base}';
+
+  /// en: 'Open-source licenses'
+  String get license => 'Open-source licenses';
+
+  /// en: 'Built on LocalSend (Apache-2.0)'
+  String get licenseNote => 'Built on LocalSend (Apache-2.0)';
+
+  /// en: 'More settings'
+  String get more => 'More settings';
+
+  /// en: 'Port, encryption, receive PIN and more'
+  String get moreNote => 'Port, encryption, receive PIN and more';
+
+  /// en: 'Shuttle · only between your own devices'
+  String get footer => 'Shuttle · only between your own devices';
+}
+
+// Path: shareme.update
+class Translations$shareme$update$en {
+  Translations$shareme$update$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'New version {version}'
+  String available({required Object version}) => 'New version ${version}';
+
+  /// en: 'Update'
+  String get install => 'Update';
+
+  /// en: 'Downloading {percent}%'
+  String downloading({required Object percent}) => 'Downloading ${percent}%';
+
+  /// en: 'Updating…'
+  String get installing => 'Updating…';
+
+  /// en: 'The new version failed verification and was not installed'
+  String get verifyFailed => 'The new version failed verification and was not installed';
+
+  /// en: 'Check for updates'
+  String get check => 'Check for updates';
+
+  /// en: 'Checking…'
+  String get checking => 'Checking…';
+
+  /// en: 'Up to date'
+  String get upToDate => 'Up to date';
+
+  /// en: 'Couldn't check'
+  String get checkFailed => 'Couldn\'t check';
+
+  /// en: 'New version available'
+  String get found => 'New version available';
+
+  /// en: 'Check automatically'
+  String get auto => 'Check automatically';
+
+  /// en: 'A transfer is running. Update when it's done'
+  String get busy => 'A transfer is running. Update when it\'s done';
+
+  /// en: 'Couldn't open the installer'
+  String get openFailed => 'Couldn\'t open the installer';
+
+  /// en: 'Download failed. Try again later'
+  String get downloadFailed => 'Download failed. Try again later';
+
+  /// en: '{version} ({build})'
+  String versionBuild({required Object version, required Object build}) => '${version} (${build})';
 }
 
 // Path: receiveTab.infoBox
@@ -1097,8 +2494,8 @@ class Translations$settingsTab$general$en {
   /// en: 'Autostart: Start hidden'
   String get launchMinimized => 'Autostart: Start hidden';
 
-  /// en: 'Show LocalSend in context menu'
-  String get showInContextMenu => 'Show LocalSend in context menu';
+  /// en: 'Show Shuttle in context menu'
+  String get showInContextMenu => 'Show Shuttle in context menu';
 
   /// en: 'Animations'
   String get animations => 'Animations';
@@ -1230,8 +2627,8 @@ class Translations$settingsTab$other$en {
   /// en: 'Other'
   String get title => 'Other';
 
-  /// en: 'Support LocalSend'
-  String get support => 'Support LocalSend';
+  /// en: 'Support LocalSend (upstream project)'
+  String get support => 'Support LocalSend (upstream project)';
 
   /// en: 'Donate'
   String get donate => 'Donate';
@@ -1653,9 +3050,9 @@ class Translations$dialogs$localNetworkUnauthorized$en {
   /// en: 'No permission'
   String get title => _root.dialogs.noPermission.title;
 
-  /// en: 'LocalSend can't find other devices without having the permission to scan the local network. Please grant this permission in the settings.'
+  /// en: 'Shuttle can't find other devices without having the permission to scan the local network. Please grant this permission in the settings.'
   String get description =>
-      'LocalSend can\'t find other devices without having the permission to scan the local network. Please grant this permission in the settings.';
+      'Shuttle can\'t find other devices without having the permission to scan the local network. Please grant this permission in the settings.';
 
   /// en: 'Settings'
   String get gotoSettings => 'Settings';
@@ -1820,8 +3217,8 @@ class Translations$dialogs$sendModeHelp$en {
   /// en: 'Sends files to multiple recipients. Selection will not be cleared after finished files transfer.'
   String get multiple => 'Sends files to multiple recipients. Selection will not be cleared after finished files transfer.';
 
-  /// en: 'Recipients who do not have LocalSend installed can download the selected files by opening the link in their browser.'
-  String get link => 'Recipients who do not have LocalSend installed can download the selected files by opening the link in their browser.';
+  /// en: 'Recipients who do not have Shuttle installed can download the selected files by opening the link in their browser.'
+  String get link => 'Recipients who do not have Shuttle installed can download the selected files by opening the link in their browser.';
 }
 
 // Path: dialogs.zoom

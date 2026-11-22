@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shuttle: label of the quick settings tile (the tile does not go through Flutter, so it lives in
+         Android resources) -->
+    <string name="shuttle_tile_clipboard">Send clipboard</string>
+</resources>

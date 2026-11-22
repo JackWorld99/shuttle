@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:localsend_isolates/constants.dart';
@@ -12,7 +11,6 @@ import 'package:localsend_isolates/src/isolate/child/sync_provider.dart';
 import 'package:localsend_isolates/src/isolate/dto/send_to_isolate_data.dart';
 import 'package:localsend_isolates/src/task/server/file_saver.dart';
 import 'package:localsend_isolates/src/task/server/http_server.dart';
-import 'package:localsend_isolates/util/android_channel.dart';
 import 'package:localsend_isolates/util/future_queue.dart';
 import 'package:localsend_isolates/util/rust.dart';
 import 'package:logging/logging.dart';
@@ -68,7 +66,8 @@ class HttpServerReceiveConfig {
 
   final String destinationDirectory;
 
-  /// Used as intermediate storage when [saveToGallery] is enabled.
+  /// Used as intermediate storage when [saveToGallery] is enabled
+  /// (iOS, Android 9 and older; newer Android versions write into the gallery directly).
   final String cacheDirectory;
 
   /// Save received images/videos to the OS gallery instead of
@@ -658,6 +657,7 @@ Future<void> _handleFileUpload({
             cacheDirectory: config.cacheDirectory,
             fileName: desiredName,
             saveToGallery: shouldSaveToGallery,
+            isImage: isImage,
             createdDirectories: session.createdDirectories,
             androidSdkInt: config.androidSdkInt,
           );
@@ -700,32 +700,25 @@ Future<void> _handleFileUpload({
   } catch (e, st) {
     // The incomplete file is kept: a retry of this file overwrites it, and
     // otherwise it stays behind as the partial file of a failed transfer.
+    // An incomplete gallery entry is deleted instead (see discardFileSaveTarget),
+    // so a retry starts with a new one.
     _logger.severe('Failed to save file', e, st);
+    if (target.kind == FileSaveKind.gallery) {
+      session.targets.remove(fileId);
+      await discardFileSaveTarget(target);
+    }
     emitFailed(e);
     return;
   }
 
   try {
-    String? filePath;
-    bool savedToGallery = false;
-    if (shouldSaveToGallery) {
-      (savedToGallery, filePath) = await saveCachedFileToGallery(
-        cachedPath: target.displayPath,
-        destinationDirectory: config.destinationDirectory,
-        fileName: desiredName,
-        isImage: isImage,
-        createdDirectories: session.createdDirectories,
-      );
-    } else {
-      filePath = target.displayPath;
-      final path = target.path;
-      if (Platform.isAndroid && path != null) {
-        // Scan before reporting success so Android can handle the saved file correctly
-        // when it is moved to Trash, allowing another file with the same name.
-        // https://github.com/localsend/localsend/issues/2007
-        await scanFileAndroid(path: path);
-      }
-    }
+    final (savedToGallery, filePath) = await completeFileSaveTarget(
+      target: target,
+      destinationDirectory: config.destinationDirectory,
+      fileName: desiredName,
+      isImage: isImage,
+      createdDirectories: session.createdDirectories,
+    );
 
     _logger.info('Saved ${dartFile.fileName}.');
     emit(

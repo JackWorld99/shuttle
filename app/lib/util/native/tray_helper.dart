@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,7 @@ import 'package:window_manager/window_manager.dart';
 final _logger = Logger('TrayHelper');
 
 enum TrayEntry {
+  sendClipboard, // Shuttle: send the clipboard to my devices
   open,
   close,
 }
@@ -42,6 +44,11 @@ Future<void> initTray() async {
     }
 
     final items = [
+      if (checkPlatform([TargetPlatform.windows]))
+        tm.MenuItem(
+          key: TrayEntry.sendClipboard.name,
+          label: t.shareme.text.clipTray,
+        ),
       tm.MenuItem(
         key: TrayEntry.open.name,
         label: t.tray.open,
@@ -78,7 +85,25 @@ Future<void> hideToTray() async {
   }
 }
 
+/// Shuttle: tray reminder dot. When "decide later" was chosen in the mini window and a request is still waiting, the tray icon gets
+/// a blue dot in its top-right corner; it goes away when the window opens, the request is accepted / declined, or the sender cancels.
+/// Only the Windows tray supports this.
+bool _trayReminder = false;
+
+Future<void> setTrayReminder(bool on) async {
+  if (_trayReminder == on || !checkPlatform([TargetPlatform.windows])) {
+    return;
+  }
+  _trayReminder = on;
+  try {
+    await tm.trayManager.setIcon(on ? Assets.img.logoDot : Assets.img.logo);
+  } catch (e) {
+    _logger.warning('Failed to update tray icon', e);
+  }
+}
+
 Future<void> showFromTray() async {
+  unawaited(setTrayReminder(false));
   await windowManager.show();
   await windowManager.focus();
   if (checkPlatform([TargetPlatform.macOS])) {

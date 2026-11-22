@@ -135,7 +135,10 @@ extension RsStoredDeviceExt on rust_discovery.RsStoredDevice {
   /// Maps the merged stored state to a [Device]: the best channel becomes the
   /// dialed address, every channel is kept as a [HttpChannel], best first.
   Device toDevice() {
-    final best = channels.first;
+    // Shuttle security: when a device has both encrypted and unencrypted addresses, use an encrypted one. The fingerprint
+    // reported on an unencrypted address can't be verified and may be an impostor on the same Wi-Fi; the channel order only
+    // reflects "most recently confirmed", not encryption.
+    final best = channels.firstWhere((c) => c.protocol == rust_model.ProtocolType.https, orElse: () => channels.first);
     return Device(
       signalingId: null,
       ip: best.host,

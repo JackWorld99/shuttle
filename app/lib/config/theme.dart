@@ -1,32 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:localsend_app/config/shareme_theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/color_mode.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/ui/dynamic_colors.dart';
 import 'package:refena_flutter/refena_flutter.dart';
-import 'package:yaru/yaru.dart' as yaru;
 
-final _borderRadius = BorderRadius.circular(5);
+// Shuttle: same corner radius as buttons and text fields
+final _borderRadius = BorderRadius.circular(ShareMeSize.radiusButton);
 
 ThemeData getTheme(ColorMode colorMode, Color customColor, Brightness brightness, DynamicColors? dynamicColors) {
-  if (colorMode == ColorMode.yaru) {
-    return _getYaruTheme(brightness);
-  }
+  // Shuttle: always use the Shuttle design theme, ignoring dynamic colors, custom colors and the Yaru theme.
+  // Only light / dark remain.
+  return buildShareMeTheme(brightness, sansFamily: _systemSansFamily());
+}
 
-  final colorScheme = _determineColorScheme(colorMode, customColor, brightness, dynamicColors);
-
-  final lightInputBorder = OutlineInputBorder(
-    borderSide: BorderSide(color: colorScheme.secondaryContainer),
-    borderRadius: _borderRadius,
-  );
-
-  final darkInputBorder = OutlineInputBorder(
-    borderSide: BorderSide(color: colorScheme.secondaryContainer),
-    borderRadius: _borderRadius,
-  );
-
+/// The system sans-serif font on desktop, chosen as LocalSend does; returns null on Android to use the system font (MiSans on MIUI).
+String? _systemSansFamily() {
   // https://github.com/localsend/localsend/issues/52
   final String? fontFamily;
   if (checkPlatform([TargetPlatform.windows])) {
@@ -48,38 +40,7 @@ ThemeData getTheme(ColorMode colorMode, Color customColor, Brightness brightness
   } else {
     fontFamily = null;
   }
-
-  return ThemeData(
-    colorScheme: colorScheme,
-    useMaterial3: true,
-    // same density on all platforms so desktop matches mobile (defaults to compact on desktop)
-    visualDensity: VisualDensity.standard,
-    navigationBarTheme: colorScheme.brightness == Brightness.dark
-        ? NavigationBarThemeData(
-            iconTheme: WidgetStateProperty.all(const IconThemeData(color: Colors.white)),
-          )
-        : null,
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: colorScheme.secondaryContainer,
-      border: colorScheme.brightness == Brightness.light ? lightInputBorder : darkInputBorder,
-      focusedBorder: colorScheme.brightness == Brightness.light ? lightInputBorder : darkInputBorder,
-      enabledBorder: colorScheme.brightness == Brightness.light ? lightInputBorder : darkInputBorder,
-      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10),
-    ),
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        foregroundColor: colorScheme.brightness == Brightness.dark ? Colors.white : null,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      ),
-    ),
-    fontFamily: fontFamily,
-  );
+  return fontFamily;
 }
 
 Future<void> updateSystemOverlayStyle(BuildContext context) async {
@@ -123,8 +84,9 @@ extension ThemeDataExt on ThemeData {
 }
 
 extension ColorSchemeExt on ColorScheme {
+  // Shuttle: warnings are amber (the warn color is mapped to ColorScheme.error)
   Color get warning {
-    return Colors.orange;
+    return error;
   }
 
   Color? get secondaryContainerIfDark {
@@ -138,72 +100,4 @@ extension ColorSchemeExt on ColorScheme {
 
 extension InputDecorationThemeExt on InputDecorationThemeData {
   BorderRadius get borderRadius => _borderRadius;
-}
-
-ColorScheme _determineColorScheme(ColorMode mode, Color customColor, Brightness brightness, DynamicColors? dynamicColors) {
-  final defaultColorScheme = ColorScheme.fromSeed(
-    seedColor: Colors.teal,
-    brightness: brightness,
-  );
-
-  final colorScheme = switch (mode) {
-    ColorMode.system => brightness == Brightness.light ? dynamicColors?.light : dynamicColors?.dark,
-    ColorMode.localsend => null,
-    ColorMode.oled => (dynamicColors?.dark ?? defaultColorScheme).copyWith(
-      surface: Colors.black,
-    ),
-    ColorMode.yaru => throw 'Should reach here',
-    ColorMode.custom => ColorScheme.fromSeed(
-      seedColor: customColor,
-      brightness: brightness,
-    ),
-  };
-
-  return colorScheme ?? defaultColorScheme;
-}
-
-ThemeData _getYaruTheme(Brightness brightness) {
-  final baseTheme = brightness == Brightness.light ? yaru.yaruLight : yaru.yaruDark;
-  final colorScheme = baseTheme.colorScheme;
-
-  final lightInputBorder = OutlineInputBorder(
-    borderSide: BorderSide(color: colorScheme.secondaryContainer),
-    borderRadius: _borderRadius,
-  );
-
-  final darkInputBorder = OutlineInputBorder(
-    borderSide: BorderSide(color: colorScheme.secondaryContainer),
-    borderRadius: _borderRadius,
-  );
-
-  InputDecorationThemeData;
-
-  return baseTheme.copyWith(
-    // same density on all platforms so desktop matches mobile (defaults to compact on desktop)
-    visualDensity: VisualDensity.standard,
-    navigationBarTheme: colorScheme.brightness == Brightness.dark
-        ? NavigationBarThemeData(
-            iconTheme: WidgetStateProperty.all(const IconThemeData(color: Colors.white)),
-          )
-        : null,
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: colorScheme.secondaryContainer,
-      border: colorScheme.brightness == Brightness.light ? lightInputBorder : darkInputBorder,
-      focusedBorder: colorScheme.brightness == Brightness.light ? lightInputBorder : darkInputBorder,
-      enabledBorder: colorScheme.brightness == Brightness.light ? lightInputBorder : darkInputBorder,
-      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10),
-    ),
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        foregroundColor: colorScheme.brightness == Brightness.dark ? Colors.white : null,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      ),
-    ),
-  );
 }

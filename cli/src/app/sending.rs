@@ -108,7 +108,7 @@ fn text_transfer(ui: &mut Ui, text: Bytes) -> Transfer {
         file_name: format!("{id}.txt"),
         size,
         file_type: "text/plain".to_string(),
-        sha256: None,
+        sha256: shareme_sha256(|| Some(text.to_vec())),
         preview,
         metadata: None,
     };
@@ -326,7 +326,7 @@ pub(super) fn collect_files(
                 file_type: mime_guess::from_path(&path)
                     .first_or_octet_stream()
                     .to_string(),
-                sha256: None,
+                sha256: shareme_sha256(|| std::fs::read(&path).ok()),
                 preview: None,
                 metadata: FileMetadata::from_fs_metadata(&metadata),
             },
@@ -589,4 +589,15 @@ mod tests {
         // An endless stream must fail instead of filling memory.
         assert!(read_stdin(std::io::repeat(b'a')).is_err());
     }
+}
+
+/// Shuttle (testing aid): when the environment variable LOCALSEND_CLI_SHA256 is set (e.g. to 1), computes each
+/// file's SHA-256 before sending so the receiver can verify it (like the app's "Create checksums when sending
+/// files" setting). Off by default, matching upstream behavior.
+/// Reads the whole file into memory, so it is only suitable for small test files.
+fn shareme_sha256(read: impl FnOnce() -> Option<Vec<u8>>) -> Option<String> {
+    if std::env::var_os("LOCALSEND_CLI_SHA256").is_none() {
+        return None;
+    }
+    read().map(|bytes| localsend::crypto::hash::sha256_hex(&bytes))
 }

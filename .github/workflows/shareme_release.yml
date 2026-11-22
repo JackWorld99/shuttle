@@ -1,0 +1,155 @@
+# Shuttle: release workflow (auto-update). Manual start only: Actions > Shuttle Release > Run workflow.
+#
+# 1. Calls shareme_windows.yml for the installer and shareme_android.yml for the APK (same commit, same version).
+# 2. support/scripts/shuttle_update_manifest.py writes the manifest (size, SHA-256 and download URL of each file)
+#    and signs it with the Ed25519 private key, producing shuttle-update.json. The private key is the
+#    SHUTTLE_UPDATE_SIGNING_KEY secret (PEM); it is written to a temporary file for this step only and deleted
+#    right after. Its public key must be listed in app/lib/util/shareme_update/update_config.dart, otherwise
+#    this step fails (the app would not accept the signature).
+# 3. Only with "publish" checked are the files published as a GitHub Release of this repository (installer,
+#    APK, manifest, plus copies under fixed names for the README's download buttons), using the workflow's own
+#    GITHUB_TOKEN. Unchecked: build and sign only; the files stay in this run's artifacts (14 days) for testing
+#    on real devices first.
+# Installed copies of Shuttle check for a new version daily at
+# https://github.com/JackWorld99/shuttle/releases/latest/download/shuttle-update.json
+#
+# Hardening:
+# - Releases only from the main branch: started on any other branch, the first job (check_branch) fails and
+#   nothing else runs, so no secret is touched.
+# - The jobs that use secrets (Android signing in build_apk, manifest signing and publishing in
+#   sign_and_publish) run in the GitHub Environment "release". Its secrets (ANDROID_KEYSTORE_BASE64,
+#   ANDROID_KEYSTORE_PASSWORD, SHUTTLE_UPDATE_SIGNING_KEY) can only be used from the main branch, and each run
+#   waits for the maintainer's approval. Jobs outside the environment (the Windows build, pull request checks)
+#   cannot read them.
+name: Shuttle Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes_zh:
+        description: "Release notes in Chinese (a sentence or two, optional)"
+        required: false
+        default: ""
+      notes_en:
+        description: "Release notes in English (shown first, optional)"
+        required: false
+        default: ""
+      publish:
+        description: "Publish as a GitHub Release of this repository (unchecked = build and sign only)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: shuttle-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check_branch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Only from main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then echo "Releases can only be made from the main branch (this run: $GITHUB_REF)"; exit 1; fi
+
+  windows:
+    needs: check_branch
+    uses: ./.github/workflows/shareme_windows.yml
+
+  android:
+    needs: check_branch
+    uses: ./.github/workflows/shareme_android.yml
+
+  sign_and_publish:
+    needs: [windows, android]
+    if: github.ref == 'refs/heads/main'
+    environment: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the release in this repository
+    env:
+      VERSION: ${{ needs.windows.outputs.version }}
+      BUILD: ${{ needs.windows.outputs.build }}
+      NOTES_ZH: ${{ inputs.notes_zh }}
+      NOTES_EN: ${{ inputs.notes_en }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, pinned 2026-11-14
+
+      - name: Same version on both platforms
+        env:
+          ANDROID_VERSION: ${{ needs.android.outputs.version }}
+          ANDROID_BUILD: ${{ needs.android.outputs.build }}
+        run: |
+          echo "Windows $VERSION ($BUILD), Android $ANDROID_VERSION ($ANDROID_BUILD)"
+          [ -n "$VERSION" ] && [ "$VERSION" = "$ANDROID_VERSION" ] && [ "$BUILD" = "$ANDROID_BUILD" ]
+
+      - name: Download Windows installer
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7, pinned 2026-11-16
+        with:
+          name: shuttle-setup-${{ env.VERSION }}
+          path: dist
+
+      - name: Download Android APK
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7, pinned 2026-11-16
+        with:
+          name: shuttle-android-${{ env.VERSION }}
+          path: dist
+
+      - name: Sign manifest
+        id: sign
+        env:
+          SHUTTLE_UPDATE_SIGNING_KEY: ${{ secrets.SHUTTLE_UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$SHUTTLE_UPDATE_SIGNING_KEY" ]; then echo "SHUTTLE_UPDATE_SIGNING_KEY is missing from the secrets"; exit 1; fi
+          umask 077
+          key="$RUNNER_TEMP/update-key.pem"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$SHUTTLE_UPDATE_SIGNING_KEY" > "$key"
+          tag="v$VERSION-$BUILD"
+          python3 support/scripts/shuttle_update_manifest.py \
+            --version "$VERSION" --build "$BUILD" \
+            --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/" \
+            --file "windows-x64=dist/Shuttle-Setup-$VERSION.exe" \
+            --file "android-arm64=dist/Shuttle-$VERSION.apk" \
+            --notes-zh "$NOTES_ZH" --notes-en "$NOTES_EN" \
+            --key "$key" \
+            --trusted-keys app/lib/util/shareme_update/update_config.dart \
+            --out dist/shuttle-update.json
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          ls -l dist
+          sha256sum dist/*
+
+      - name: Upload release files
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, pinned 2026-11-14
+        with:
+          name: shuttle-release-${{ env.VERSION }}-${{ env.BUILD }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish the release
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.sign.outputs.tag }}
+        run: |
+          # English first, then the Chinese notes
+          notes="${NOTES_EN:-Shuttle $VERSION}"
+          if [ -n "$NOTES_ZH" ]; then notes="$notes"$'\n\n'"$NOTES_ZH"; fi
+          # Copies with fixed names, so the README's download buttons can link to
+          # releases/latest/download/<name>. The update manifest keeps pointing at the versioned files.
+          cp "dist/Shuttle-Setup-$VERSION.exe" dist/Shuttle-Windows-Setup.exe
+          cp "dist/Shuttle-$VERSION.apk" dist/Shuttle-Android.apk
+          # --latest: the tag ends in "-<build>", so GitHub's automatic detection may take it for a pre-release
+          # and not mark it "Latest"; the app would then not find it
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title "Shuttle $VERSION ($BUILD)" --notes "$notes" \
+            "dist/Shuttle-Setup-$VERSION.exe" "dist/Shuttle-$VERSION.apk" dist/shuttle-update.json \
+            dist/Shuttle-Windows-Setup.exe dist/Shuttle-Android.apk
+          echo "Published: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"

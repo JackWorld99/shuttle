@@ -1,0 +1,58 @@
+{
+  "_comment": [
+    "shareMe: how network interfaces and addresses are classified.",
+    "The receiving server (packages/core/src/http/server/local_network.rs) and the app",
+    "(app/lib/util/shareme_net_interface.dart) must agree; both test suites read this file."
+  ],
+  "kinds": {
+    "cellular": [
+      "rmnet_data0",
+      "rmnet_data12",
+      "rmnet0",
+      "RMNET_DATA1",
+      "rmnet_ipa0",
+      "r_rmnet_data0",
+      "rev_rmnet0",
+      "ccmni4",
+      "v4-rmnet_data0",
+      "v4-ccmni0",
+      "clat4",
+      "Cellular",
+      "Cellular 2",
+      "手机网络"
+    ],
+    "vpn": ["tun0", "tun1", "tun", "utun3", "tap0", "ipsec0"],
+    "tailscale": ["Tailscale", "tailscale0"],
+    "hostOnly": [
+      "vEthernet (WSL)",
+      "vEthernet (WSL (Hyper-V firewall))",
+      "vEthernet (Default Switch)",
+      "VMware Network Adapter VMnet1",
+      "VMware Network Adapter VMnet8",
+      "VirtualBox Host-Only Network #2"
+    ],
+    "other": [
+      "wlan0",
+      "wlan1",
+      "swlan0",
+      "ap0",
+      "eth0",
+      "rndis0",
+      "bt-pan",
+      "tunnel",
+      "tun_x",
+      "wg0",
+      "lo",
+      "Wi-Fi",
+      "WLAN",
+      "以太网",
+      "Ethernet 2",
+      "Local Area Connection* 10",
+      "vEthernet (External Switch)"
+    ]
+  },
+  "tailscaleIpv4": {
+    "in": ["100.64.0.1", "100.101.102.103", "100.115.94.1", "100.127.255.254"],
+    "out": ["100.63.255.255", "100.115.92.5", "100.115.93.255", "100.128.0.1", "10.0.0.1", "192.168.1.5"]
+  }
+}

@@ -111,7 +111,8 @@ Future<bool> isAutoStartHidden() async {
   }
 }
 
-const _windowsRegistryKeyValue = 'LocalSend';
+// Shuttle: kept separate from the official LocalSend so the two apps' autostart entries don't overwrite each other
+const _windowsRegistryKeyValue = 'Shuttle';
 
 RegistryKey _getWindowsRegistryKey() {
   return Registry.openPath(

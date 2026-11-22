@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
+import 'package:localsend_app/util/coalesced_save.dart';
 import 'package:localsend_app/util/native/file_picker.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
+import 'package:localsend_app/util/shareme_diagnostics.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
 
@@ -37,13 +39,19 @@ class ShortcutWatcher extends StatelessWidget {
       },
       child: Actions(
         actions: {
-          _ExitAppIntent: CallbackAction(onInvoke: (_) => exit(0)),
+          _ExitAppIntent: CallbackAction(
+            onInvoke: (_) {
+              CoalescedSave.flushAllBeforeExit(); // Shuttle: write out pending history saves first
+              markCleanExit('quit shortcut');
+              exit(0);
+            },
+          ),
           _PopPageIntent: CallbackAction(onInvoke: (_) async => Navigator.of(Routerino.context).maybePop()),
           _PasteIntent: CallbackAction(
             onInvoke: (_) async {
               await context.global.dispatchAsync(PickFileAction(option: FilePickerOption.clipboard, context: context));
               if (context.mounted) {
-                context.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
+                context.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.transfer));
               }
               return null;
             },

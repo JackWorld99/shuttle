@@ -40,7 +40,9 @@ class TranslationsZhCn extends Translations with BaseTranslations<AppLocale, Tra
 
   // Translations
   @override
-  String get appName => 'LocalSend';
+  String get appName => 'Shuttle';
+  @override
+  late final Translations$shareme$zh_CN shareme = Translations$shareme$zh_CN.internal(_root);
   @override
   late final Translations$general$zh_CN general = Translations$general$zh_CN.internal(_root);
   @override
@@ -95,6 +97,37 @@ class TranslationsZhCn extends Translations with BaseTranslations<AppLocale, Tra
   late final Translations$web$zh_CN web = Translations$web$zh_CN.internal(_root);
   @override
   late final Translations$assetPicker$zh_CN assetPicker = Translations$assetPicker$zh_CN.internal(_root);
+}
+
+// Path: shareme
+class Translations$shareme$zh_CN extends Translations$shareme$en {
+  Translations$shareme$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  late final Translations$shareme$nav$zh_CN nav = Translations$shareme$nav$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$time$zh_CN time = Translations$shareme$time$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$home$zh_CN home = Translations$shareme$home$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$safety$zh_CN safety = Translations$shareme$safety$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$send$zh_CN send = Translations$shareme$send$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$text$zh_CN text = Translations$shareme$text$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$receive$zh_CN receive = Translations$shareme$receive$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$history$zh_CN history = Translations$shareme$history$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$pair$zh_CN pair = Translations$shareme$pair$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$settings$zh_CN settings = Translations$shareme$settings$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$update$zh_CN update = Translations$shareme$update$zh_CN.internal(_root);
 }
 
 // Path: general
@@ -290,7 +323,7 @@ class Translations$networkInterfacesPage$zh_CN extends Translations$networkInter
   @override
   String get title => '网络接口';
   @override
-  String get info => '默认情况下，LocalSend 使用所有可用的网络接口。您可以在此处排除不需要的网络接口。您需要重新启动服务器以应用更改。';
+  String get info => '默认情况下，Shuttle 使用所有可用的网络接口。您可以在此处排除不需要的网络接口。您需要重新启动服务器以应用更改。';
   @override
   String get preview => '预览';
   @override
@@ -415,7 +448,7 @@ class Translations$receiveOptionsPage$zh_CN extends Translations$receiveOptionsP
   @override
   String get destination => _root.settingsTab.receive.destination;
   @override
-  String get appDirectory => '(LocalSend 文件夹)';
+  String get appDirectory => '(Shuttle 文件夹)';
   @override
   String get saveToGallery => _root.settingsTab.receive.saveToGallery;
   @override
@@ -494,7 +527,7 @@ class Translations$webSharePage$zh_CN extends Translations$webSharePage$en {
   @override
   String pinHint({required Object pin}) => 'PIN 为 “${pin}”';
   @override
-  String get encryptionHint => 'LocalSend 使用自签名证书。您需要在浏览器中允许它。';
+  String get encryptionHint => 'Shuttle 使用自签名证书。您需要在浏览器中允许它。';
   @override
   String pendingRequests({required Object n}) => '待处理请求：${n}';
 }
@@ -518,11 +551,11 @@ class Translations$aboutPage$zh_CN extends Translations$aboutPage$en {
 
   // Translations
   @override
-  String get title => '关于 LocalSend';
+  String get title => '关于 Shuttle';
   @override
   List<String> get description => [
-    'LocalSend 是一款免费的开源应用程序，可让您通过本地网络与附近的设备安全地分享文件和信息，而无需互联网连接。',
-    '本程序可在 Android、iOS、macOS、Windows 和 Linux 上使用。您可以在官方主页找到所有下载选项。',
+    'Shuttle 让你在自己的设备之间，通过局域网安全地互传原图、原视频、文件、链接和文字，不需要连互联网。',
+    'Shuttle 基于免费开源项目 LocalSend（Apache-2.0 许可）开发。感谢下方列出的 LocalSend 作者和贡献者。',
   ];
   @override
   String get author => '作者';
@@ -745,7 +778,7 @@ class Translations$tray$zh_CN extends Translations$tray$en {
   @override
   String get open => _root.general.open;
   @override
-  String get close => '退出 LocalSend';
+  String get close => '退出 Shuttle';
   @override
   String get closeWindows => '退出';
 }
@@ -838,6 +871,953 @@ class Translations$assetPicker$zh_CN extends Translations$assetPicker$en {
   String get sNameDurationLabel => '时长';
   @override
   String get sUnitAssetCountLabel => '计数';
+}
+
+// Path: shareme.nav
+class Translations$shareme$nav$zh_CN extends Translations$shareme$nav$en {
+  Translations$shareme$nav$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get transfer => '传输';
+  @override
+  String get history => '记录';
+  @override
+  String get settings => '设置';
+}
+
+// Path: shareme.time
+class Translations$shareme$time$zh_CN extends Translations$shareme$time$en {
+  Translations$shareme$time$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get justNow => '刚刚';
+  @override
+  String minutesAgo({required Object n}) => '${n} 分钟前';
+  @override
+  String hoursAgo({required Object n}) => '${n} 小时前';
+  @override
+  String daysAgo({required Object n}) => '${n} 天前';
+}
+
+// Path: shareme.home
+class Translations$shareme$home$zh_CN extends Translations$shareme$home$en {
+  Translations$shareme$home$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get scanToPair => '扫码配对';
+  @override
+  String get meVisible => '附近的设备能找到你';
+  @override
+  String get meHidden => '接收已关闭，附近的设备找不到你';
+  @override
+  String get justReceived => '刚收到';
+  @override
+  String get allHistory => '全部记录';
+  @override
+  String edgeFrom({required Object from}) => '${from}→本机';
+  @override
+  String get edgeOriginal => '原图未压缩';
+  @override
+  String get edgeVerified => '校验通过';
+  @override
+  String get myDevices => '我的设备';
+  @override
+  String get nearby => '附近';
+  @override
+  String get nearbyNote => '未配对，要对方确认';
+  @override
+  String get noNearby => '附近还没找到设备。请确认两台设备连着同一个 WiFi，再点「附近」右边的「刷新」。';
+  @override
+  String get refresh => '刷新';
+  @override
+  String get dropTitle => '拖到这里发送';
+  @override
+  String get dropHint => '或按 Ctrl+V 发剪贴板';
+  @override
+  String get dropHintMac => '或按 ⌘V 发剪贴板';
+  @override
+  String get dropActive => '松手，再选发给谁';
+  @override
+  String get pickFiles => '选文件';
+  @override
+  String get pickFolder => '文件夹';
+  @override
+  String get sendTextOrLink => '文字';
+  @override
+  String get recent => '最近';
+  @override
+  String get emptyTitle => '还没有「我的设备」';
+  @override
+  String get emptyBody => '扫码配对，或在「附近」点设备右边的「添加」或「配对」。';
+  @override
+  String get sameWifi => '在线';
+  @override
+  String get viaTailscale => '在线 · 远程';
+  @override
+  String get crossNetwork => '在线 · 远程';
+  @override
+  String get offline => '不在线';
+  @override
+  String offlineTap({required Object name}) => '${name} 现在不在线';
+  @override
+  String offlineMore({required Object n}) => '另外 ${n} 台不在线';
+  @override
+  String get add => '添加';
+  @override
+  String get addDevice => '添加设备';
+  @override
+  String get original => '原图';
+  @override
+  String fromName({required Object name}) => '来自 ${name}';
+  @override
+  String get addToMine => '加为我的设备';
+  @override
+  String get removeFromMine => '从我的设备移除';
+  @override
+  String get unverified => '没核对';
+  @override
+  String get verifyDevice => '核对这台设备';
+  @override
+  String remaining({required Object time}) => '还剩 ${time}';
+  @override
+  String selected({required Object n, required Object size}) => '已选 ${n} 项 · ${size}';
+  @override
+  String get selectedHint => '点一台设备发送';
+  @override
+  String get clear => '清空';
+  @override
+  String get sendMedia => '照片和视频';
+  @override
+  String get sendTo => '发给';
+  @override
+  String dropTitleTo({required Object name}) => '拖到这里，发给 ${name}';
+  @override
+  String dropActiveTo({required Object name}) => '松手就发给 ${name}';
+  @override
+  String get file => '文件';
+  @override
+  String get text => '文字';
+  @override
+  String edgeCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 项',
+  );
+  @override
+  String sending({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '正在发送 ${n} 项',
+  );
+  @override
+  String waiting({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '等待对方接受 ${n} 项',
+  );
+}
+
+// Path: shareme.safety
+class Translations$shareme$safety$zh_CN extends Translations$shareme$safety$en {
+  Translations$shareme$safety$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get runnableTitle => '这个文件可能会运行程序';
+  @override
+  String get runnableBody => '为了安全，Shuttle 不直接打开它。确定是你自己的文件，再到文件夹里打开。';
+  @override
+  String get showInFolder => '在文件夹中显示';
+}
+
+// Path: shareme.send
+class Translations$shareme$send$zh_CN extends Translations$shareme$send$en {
+  Translations$shareme$send$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get sheetTitle => '发给谁';
+  @override
+  String get shareLink => '改用链接分享（对方用浏览器下载）';
+  @override
+  String get offlineCannot => '不在线 · 上线后才能发';
+  @override
+  String get nearbyNeedsApproval => '附近 · 未配对，需要对方确认';
+  @override
+  String get noDevices => '附近还没找到设备。请确认两台设备连着同一个 WiFi。';
+  @override
+  String sendTo({required Object name}) => '发送到 ${name}';
+  @override
+  String get chooseDevice => '先选一台设备';
+  @override
+  String waitingTitle({required Object name}) => '等待${name}接受';
+  @override
+  String waitingBody({required Object name}) => '请在${name}上点「接受」。对方开了「直接收」时会自动开始。';
+  @override
+  String get cancel => '取消';
+  @override
+  String get sendingTo => '正在发往';
+  @override
+  String fileIndex({required Object i, required Object n}) => '第 ${i} / ${n} 项';
+  @override
+  String get files => '文件';
+  @override
+  String get encrypted => '已加密';
+  @override
+  String get notEncrypted => '未加密';
+  @override
+  String get leaveHint => '离开这个页面也会继续传，进度在通知栏里。';
+  @override
+  String get cancelSend => '取消发送';
+  @override
+  String get queued => '等待';
+  @override
+  String get failed => '失败';
+  @override
+  String get done => '完成';
+  @override
+  String get sendMore => '再发一些';
+  @override
+  String get deliveredTo => '已送达';
+  @override
+  String get statSize => '大小';
+  @override
+  String get statTime => '用时';
+  @override
+  String get statSpeed => '平均速度';
+  @override
+  String get originalTitle => '原档';
+  @override
+  String get originalWithHash => '发出的是原文件，没有压缩，并附上了每个文件的 SHA-256，对方可以逐个核对。';
+  @override
+  String get originalNoHash => '发出的是原文件，没有压缩。';
+  @override
+  String get originalBadge => '原图';
+  @override
+  String get retry => '重发没发出去的';
+  @override
+  String declined({required Object name}) => '${name} 拒绝了这次传输';
+  @override
+  String busy({required Object name}) => '${name} 正在接收别的文件，请稍后再试';
+  @override
+  String get tooMany => 'PIN 输错次数太多，请稍后再试';
+  @override
+  String canceledByReceiver({required Object name}) => '${name} 取消了传输';
+  @override
+  String get canceledBySender => '已取消发送';
+  @override
+  String notSent({required Object name}) => '没能发给 ${name}';
+  @override
+  String get insecure => '为了安全没有发：它没有用加密连接，可能是同一 WiFi 下有人在冒充它。';
+  @override
+  String notSentHint({required Object name}) => '连不上${name}。看看对方的 Shuttle 是否开着；不在同一个 WiFi 时，两边都要开着 Tailscale。';
+  @override
+  String notSentReason({required Object name}) => '连不上 ${name}，它可能睡着了，或者没开 Shuttle。';
+  @override
+  String notSentReasonRemote({required Object name}) => '连不上 ${name}。不在同一 WiFi 时，两边都要开着 Tailscale。';
+  @override
+  String get details => '详细信息';
+  @override
+  String get autoBack => '2 秒后自动回首页';
+  @override
+  String autoRetrying({required Object n}) => '马上自动重试（第 ${n} 次）';
+  @override
+  String get connecting => '正在连接…';
+  @override
+  String preparing({required Object curr, required Object n}) => '准备中 ${curr}/${n}';
+  @override
+  String get retryAll => '重试';
+  @override
+  String get back => '返回';
+  @override
+  String sheetSummary({required num n, required Object size}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 项 · ${size} · 原图未压缩',
+  );
+  @override
+  String deliveredBody({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 项，对方收到的是原图。',
+  );
+  @override
+  String failedTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '有 ${n} 个文件没发出去',
+  );
+}
+
+// Path: shareme.text
+class Translations$shareme$text$zh_CN extends Translations$shareme$text$en {
+  Translations$shareme$text$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get sheetTitle => '发文字或链接';
+  @override
+  String get clipTray => '把剪贴板发给我的设备';
+  @override
+  String get clipEmpty => '剪贴板是空的';
+  @override
+  String snackCopied({required Object name}) => '已复制，来自 ${name}';
+  @override
+  String snackLink({required Object name}) => '${name} 发来一个链接';
+  @override
+  String get snackView => '查看';
+  @override
+  String get snackOpen => '打开';
+  @override
+  String get autoCopied => '来自我的设备，已自动复制';
+  @override
+  String get clipboardLink => '剪贴板里有一个链接';
+  @override
+  String get clipboardText => '剪贴板里有一段文字';
+  @override
+  String get paste => '粘贴';
+  @override
+  String get hint => '输入要发送的文字或链接';
+  @override
+  String get sendTo => '发给';
+  @override
+  String get send => '发送';
+  @override
+  String get receivedLink => '发来一个链接';
+  @override
+  String get receivedText => '发来一段文字';
+  @override
+  String get linkNote => '不会在后台打开这个网址，也不会去抓它的标题和图片（那样会把你的 IP 暴露给对方网站）。';
+  @override
+  String get copy => '复制';
+  @override
+  String get copied => '已复制';
+  @override
+  String get openLink => '打开链接';
+  @override
+  String get close => '关闭';
+  @override
+  String get savedToHistory => '已存进记录';
+  @override
+  String sentTo({required Object name}) => '已发给 ${name}';
+  @override
+  String count({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 字',
+  );
+}
+
+// Path: shareme.receive
+class Translations$shareme$receive$zh_CN extends Translations$shareme$receive$en {
+  Translations$shareme$receive$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get mineVerified => '我的设备 · 证书指纹与加入时一致';
+  @override
+  String get mineUnencrypted => '我的设备 · 没加密，无法确认身份';
+  @override
+  String get mineUnchecked => '我的设备 · 没核对，每次都会问';
+  @override
+  String get autoAcceptVerified => '核对过的设备发来的直接收';
+  @override
+  String get fingerprint => '设备指纹';
+  @override
+  String get strangerTitle => '这台设备不在「我的设备」里。';
+  @override
+  String get strangerBody => '确认是你认识的设备再接收。常用的设备可以在首页加为「我的设备」，以后一眼就能认出来。';
+  @override
+  String get unencrypted => '这次连接没有加密，同一个 WiFi 里的人可能看得到内容。';
+  @override
+  String get contents => '内容';
+  @override
+  String get original => '原图，未压缩';
+  @override
+  String get autoAccept => '「我的设备」发来的直接接收';
+  @override
+  String get decline => '拒绝';
+  @override
+  String get accept => '接收';
+  @override
+  String get canceledBySender => '对方取消了发送';
+  @override
+  String get close => '关闭';
+  @override
+  String get preparing => '正在准备接收……';
+  @override
+  String get receivingFrom => '正在接收，来自';
+  @override
+  String receivedFrom({required Object name, required Object time, required Object speed}) => '来自 ${name} · 用时 ${time} · 平均 ${speed}';
+  @override
+  String get whereSaved => '存在哪里';
+  @override
+  String get savedToGallery => '已存到相册';
+  @override
+  String get open => '打开';
+  @override
+  String get viewInGallery => '在相册里看';
+  @override
+  String get openFolder => '打开文件夹';
+  @override
+  String get cancelReceive => '取消接收';
+  @override
+  String get popupRemember => '以后这台设备发来的直接接收';
+  @override
+  String get popupStranger => '没加进「我的设备」。确认是你认识的设备再接收。';
+  @override
+  String get popupEsc => '按 Esc 稍后决定';
+  @override
+  String popupFileOf({required Object i, required Object n}) => '第 ${i} / ${n} 项';
+  @override
+  String get popupReceiving => '正在接收';
+  @override
+  String popupLeft({required Object time}) => '还剩 ${time}';
+  @override
+  String popupSavedTo({required Object path}) => '存到 ${path}';
+  @override
+  String wantsToSend({required num n, required Object size}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '想发给你 ${n} 项，共 ${size}',
+  );
+  @override
+  String photos({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '照片 ${n}',
+  );
+  @override
+  String videos({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '视频 ${n}',
+  );
+  @override
+  String files({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '文件 ${n}',
+  );
+  @override
+  String receivedTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '已收到 ${n} 项',
+  );
+  @override
+  String mediaItems({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '照片和视频 · ${n} 项',
+  );
+  @override
+  String failedTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '有 ${n} 个文件没收到',
+  );
+  @override
+  String quickSaved({required num n, required Object name}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '已收到 ${name} 发来的 ${n} 项',
+  );
+}
+
+// Path: shareme.history
+class Translations$shareme$history$zh_CN extends Translations$shareme$history$en {
+  Translations$shareme$history$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => '记录';
+  @override
+  String get all => '全部';
+  @override
+  String get media => '照片和视频';
+  @override
+  String get files => '文件';
+  @override
+  String get texts => '文字和链接';
+  @override
+  String get today => '今天';
+  @override
+  String get yesterday => '昨天';
+  @override
+  String get from => '来自';
+  @override
+  String get to => '发给';
+  @override
+  String get unpaired => '（未配对）';
+  @override
+  String sendFailed({required Object reason}) => '发送失败：${reason}';
+  @override
+  String get reasonDeclined => '对方拒绝了';
+  @override
+  String get reasonCanceledByReceiver => '对方取消了';
+  @override
+  String get reasonCanceledBySender => '你取消了';
+  @override
+  String get reasonBusy => '对方正忙';
+  @override
+  String get reasonPin => 'PIN 输错太多次';
+  @override
+  String get reasonError => '出错了';
+  @override
+  String get emptyTitle => '还没有传过东西';
+  @override
+  String get emptyBody => '收到的和发出的都会记在这里。';
+  @override
+  String get emptyAction => '发照片和视频';
+  @override
+  String get emptyActionFiles => '发文件';
+  @override
+  String get emptyFilter => '这一类还没有记录。';
+  @override
+  String get search => '搜索';
+  @override
+  String get searchHint => '搜文件名、文字或设备';
+  @override
+  String get searchEmpty => '没有找到';
+  @override
+  String get off => '记录已关闭，新的收发不会记下来。可以在设置里打开「保存到历史记录」。';
+  @override
+  String get clearAll => '清空记录';
+  @override
+  String get clearAllTitle => '清空全部记录？';
+  @override
+  String get clearAllBody => '只删记录，收到的文件还在。';
+  @override
+  String get deleteTitle => '删除这条记录？';
+  @override
+  String get deleteBody => '只删记录，文件还在。';
+  @override
+  String get delete => '删除';
+  @override
+  String get deleteRecord => '删除这条记录';
+  @override
+  String get cancel => '取消';
+  @override
+  String fromAt({required Object name, required Object time}) => '来自 ${name} · ${time}';
+  @override
+  String toAt({required Object name, required Object time}) => '发给 ${name} · ${time}';
+  @override
+  String sentLink({required Object name}) => '发给 ${name} 的链接';
+  @override
+  String sentText({required Object name}) => '发给 ${name} 的文字';
+  @override
+  String receivedLink({required Object name}) => '${name} 发来的链接';
+  @override
+  String receivedText({required Object name}) => '${name} 发来的文字';
+  @override
+  String get notDelivered => '没发出去';
+  @override
+  String edgeTo({required Object name}) => '发给 ${name}';
+  @override
+  String mediaCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 项照片和视频',
+  );
+  @override
+  String fileCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 个文件',
+  );
+  @override
+  String itemCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 项',
+  );
+  @override
+  String partFailed({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 项没发出去',
+  );
+  @override
+  String sentTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '发出 ${n} 项',
+  );
+}
+
+// Path: shareme.pair
+class Translations$shareme$pair$zh_CN extends Translations$shareme$pair$en {
+  Translations$shareme$pair$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get hostTitle => '配对新设备';
+  @override
+  String get pairHostHint => '在手机上打开 Shuttle，点首页右上角的扫码按钮，对准这个二维码。';
+  @override
+  String get hostOneUse => '二维码 5 分钟内有效，只能用一次，不含设备名。';
+  @override
+  String expiresIn({required Object time}) => '${time} 后失效';
+  @override
+  String get expired => '二维码过期了';
+  @override
+  String get newCode => '换一个二维码';
+  @override
+  String get noNetwork => '这台电脑没有连上局域网，手机连不过来。请先连上 WiFi 或网线。';
+  @override
+  String startFailed({required Object error}) => '配对没能开始：${error}';
+  @override
+  String get verifyTitle => '核对配对印';
+  @override
+  String get verifyHost => '看手机屏幕：上面的印和 12 位数字和这里一模一样，才点「一样，配对」。不一样，说明有别的设备抢先用了这个二维码。';
+  @override
+  String get verifyGuest => '看电脑屏幕：上面的印和 12 位数字和这里一模一样，才点「一样，配对」。';
+  @override
+  String peerLine({required Object name, required Object model}) => '${name} · ${model}';
+  @override
+  String get sameHost => '一样，配对';
+  @override
+  String get sameGuest => '一样，配对';
+  @override
+  String get different => '不一样';
+  @override
+  String get waitPhone => '等手机上确认…';
+  @override
+  String get waitComputer => '等电脑上确认…';
+  @override
+  String get nameIt => '给它起个名字';
+  @override
+  String get intruder => '又有一台设备扫了这个二维码。如果正在核对的不是你的手机，请点「不一样」。';
+  @override
+  String get doneTitle => '已配对';
+  @override
+  String doneAuto({required Object name}) => '以后在同一个 WiFi 下，两台设备会自动找到对方。${name} 发来的东西会直接接收，可以在设置里改。';
+  @override
+  String doneAsk({required Object name}) => '以后在同一个 WiFi 下，两台设备会自动找到对方。${name} 发来的东西每次会先问你，可以在设置里改成直接接收。';
+  @override
+  String get done => '完成';
+  @override
+  String get tryAgain => '重新扫码';
+  @override
+  String get failRejectedHere => '已取消，没有配对。';
+  @override
+  String get failRejectedPeer => '对方点了「不一样」，没有配对。';
+  @override
+  String get failUsed => '这个二维码已经被另一台设备用过了。请在电脑上换一个二维码再扫。';
+  @override
+  String get failExpired => '二维码过期了，请在电脑上换一个再扫。';
+  @override
+  String get failUnreachable => '连不上电脑。请确认两台设备连着同一个 WiFi，并且电脑上的配对页还开着。';
+  @override
+  String get failIdentity => '电脑的身份核对没通过，已停止配对。可能有人在冒充这台电脑。';
+  @override
+  String get failTimeout => '太久没有确认，没有配对。';
+  @override
+  String get failProtocol => '配对没有完成（消息对不上）。请重新扫码。';
+  @override
+  String get scanTitle => '扫码配对';
+  @override
+  String get scanFrame => '把电脑屏幕上的二维码放进框里';
+  @override
+  String get scanHowTitle => '在电脑上这样打开二维码';
+  @override
+  String get scanHowBody => '在电脑上打开 Shuttle，点「添加设备」，再用这台手机对准屏幕上的二维码。';
+  @override
+  String get notOurCode => '这不是 Shuttle 的配对二维码';
+  @override
+  String get connecting => '正在连接电脑…';
+  @override
+  String cameraError({required Object error}) => '打不开相机：${error}';
+  @override
+  String get verified => '已核对';
+  @override
+  String get nearbyHostHint => '另一台电脑：在它首页的「附近」里点这台电脑的「配⁠对」。';
+  @override
+  String get nearbyButton => '配对';
+  @override
+  String nearbyTitle({required Object name}) => '和 ${name} 配对';
+  @override
+  String nearbyConnecting({required Object name}) => '正在连接 ${name}…';
+  @override
+  String nearbyOpenOther({required Object name}) => '在 ${name} 上打开 Shuttle，在「附近」里点这台电脑旁边的「配对」（或者点「添加设备」）。那边一点，这里就会自动继续。';
+  @override
+  String get nearbyAddPlain => '对方不是 Shuttle？直接添加，不核对';
+  @override
+  String verifyNearby({required Object name}) => '看 ${name} 的屏幕：上面的印和 12 位数字和这里一模一样，才点「一样，配对」。';
+  @override
+  String verifyHostNearby({required Object name}) => '看 ${name} 的屏幕：上面的印和 12 位数字和这里一模一样，才点「一样，配对」。不一样，说明有别的设备在冒充它。';
+  @override
+  String waitPeer({required Object name}) => '等 ${name} 上确认…';
+  @override
+  String get tryAgainShort => '再试一次';
+  @override
+  String failNearbyBusy({required Object name}) => '${name} 正在和别的设备配对，请稍后再试。';
+  @override
+  String failNearbyUnreachable({required Object name}) => '连不上 ${name}。请在它上面点这台电脑旁边的「配对」（或打开「添加设备」），并确认两台电脑连着同一个网络。';
+  @override
+  String failNearbyExpired({required Object name}) => '${name} 上的配对页超时了。请在 ${name} 上重新打开「添加设备」，再点「再试一次」。';
+  @override
+  String requestTitle({required Object name}) => '${name} 想和这台电脑配对';
+  @override
+  String requestHint({required Object name}) => '只有你刚在 ${name} 上点了「配对」才接受。不认识它就点「忽略」，手机照样可以扫下面的二维码。';
+  @override
+  String get requestAccept => '接受';
+  @override
+  String get requestIgnore => '忽略';
+  @override
+  String nearbyWaitAccept({required Object name}) => '配对请求已经发过去了。请在 ${name} 上点「接受」。';
+  @override
+  String failNearbyDeclined({required Object name}) => '${name} 上点了「忽略」，没有配对。';
+  @override
+  String get failDeclined => '对方没有接受，没有配对。';
+  @override
+  String intruderNearby({required Object name}) => '有手机扫了这个二维码，但这台电脑正在和 ${name} 核对。如果你要配的是那台手机，请点「不一样」，再换一个二维码给它扫。';
+}
+
+// Path: shareme.settings
+class Translations$shareme$settings$zh_CN extends Translations$shareme$settings$en {
+  Translations$shareme$settings$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => '设置';
+  @override
+  String fingerprint({required Object fp}) => '指纹 ${fp}';
+  @override
+  String get rename => '改名';
+  @override
+  String get renameHint => '附近的设备看到的名字';
+  @override
+  String get save => '保存';
+  @override
+  String get cancel => '取消';
+  @override
+  String get receive => '接收';
+  @override
+  String get whenReceiving => '收到文件时';
+  @override
+  String get modeFavorites => '「我的设备」直接收，其他设备每次问我';
+  @override
+  String get modeAsk => '每次都问我';
+  @override
+  String get modeFavoritesShort => '我的设备直接收';
+  @override
+  String get modeVerified => '核对过的设备直接收，其他每次问我';
+  @override
+  String get modeVerifiedShort => '核对过的直接收';
+  @override
+  String get verify => '核对';
+  @override
+  String get modeAskShort => '每次都问';
+  @override
+  String get modeAllShort => '全部直接收';
+  @override
+  String get saveTo => '保存到';
+  @override
+  String get defaultDownloads => '下载';
+  @override
+  String get galleryShort => '照片视频存到相册';
+  @override
+  String get keepLocationShort => '保留拍摄地点';
+  @override
+  String get turnedOn => '已开';
+  @override
+  String get turnOn => '去开启';
+  @override
+  String missing({required Object n}) => '还差 ${n} 项';
+  @override
+  String get view => '查看';
+  @override
+  String get general => '通用';
+  @override
+  String get autoStart => '开机自动启动';
+  @override
+  String get autoStartNote => '开机后在托盘里待命，随时能收';
+  @override
+  String get moreShort => '更多';
+  @override
+  String get localsendSettings => '高级设置';
+  @override
+  String get localsendSettingsNote => '端口、加密等';
+  @override
+  String get saveToHistoryShort => '记下收发记录';
+  @override
+  String get tailscaleRow => 'Tailscale';
+  @override
+  String get tailscaleConnected => '已连上';
+  @override
+  String get tailscaleNotConnected => '没连上';
+  @override
+  String get crossNetworkNote => '两台设备都装 Tailscale、登录同一个账号，不在同一 WiFi 时会自动经它连上（加密，不经过别人的服务器）。';
+  @override
+  String get thisDevice => '本机';
+  @override
+  String get fingerprintLabel => '指纹';
+  @override
+  String get backgroundPageNote => '小米系统要多设两项，App 读不到它们的状态，点一下去看看。';
+  @override
+  String get modeAll => '所有设备都直接收';
+  @override
+  String get modeAllWarn => '不建议：同一个 WiFi 里的任何人都能直接把文件存进你的手机';
+  @override
+  String get saveLocation => '保存位置';
+  @override
+  String get resetLocation => '恢复默认';
+  @override
+  String get defaultLocation => 'Download（默认）';
+  @override
+  String get saveToGallery => '照片和视频自动存到相册';
+  @override
+  String get saveToGalleryNote => '关掉的话，照片和视频也存到上面的保存位置';
+  @override
+  String get keepLocation => '保留照片的拍摄位置';
+  @override
+  String get keepLocationOn => '已允许读取照片里的位置信息';
+  @override
+  String get keepLocationOff => '需要「访问照片位置信息」权限，否则系统会去掉照片里的位置';
+  @override
+  String get saveToHistory => '保存到历史记录';
+  @override
+  String get receiveLink => '用浏览器传给我';
+  @override
+  String get receiveLinkNote => '给没装 Shuttle 的设备一个链接';
+  @override
+  String get receivePin => '接收要输入密码';
+  @override
+  String get receivePinNote => '所有设备发来都要先输这个密码';
+  @override
+  String get saveToHistoryNote => '收到的和发出的都记在「记录」里';
+  @override
+  String get background => '后台接收';
+  @override
+  String get backgroundNote => '小米系统需要单独设置';
+  @override
+  String get notifications => '通知';
+  @override
+  String get notificationsOn => '已允许，用来显示接收请求和进度';
+  @override
+  String get notificationsOff => '没允许：在后台时看不到接收请求';
+  @override
+  String get battery => '不做电池优化';
+  @override
+  String get batteryOn => '已设置好';
+  @override
+  String get batteryOff => '还没设：系统可能在后台停掉 Shuttle';
+  @override
+  String get autostart => '允许自启动';
+  @override
+  String get autostartNote => '小米不让 App 读这个开关，点一下去看看';
+  @override
+  String get powerSaver => '省电策略设为「无限制」';
+  @override
+  String get powerSaverNote => '小米不让 App 读这个设置，点一下去看看';
+  @override
+  String get backgroundLimit => '注意：App 被划掉或被系统清理后就收不到文件了。一直在后台等着接收的功能还在开发。';
+  @override
+  String get openedAppDetails => '打不开小米的设置页，已打开系统的「应用信息」';
+  @override
+  String get devices => '我的设备';
+  @override
+  String get devicesEmpty => '还没有。扫码配对，或在首页「附近」点「添加」或「配对」。';
+  @override
+  String get online => '在线';
+  @override
+  String get offline => '不在线';
+  @override
+  String get pairNew => '配对新设备';
+  @override
+  String get pairNewNote => '扫电脑上的二维码';
+  @override
+  String get pairNewDesktopNote => '用手机扫这台电脑显示的二维码';
+  @override
+  String removeTitle({required Object name}) => '把 ${name} 移出我的设备？';
+  @override
+  String get removeBody => '以后它发来的文件要你确认才收。';
+  @override
+  String get remove => '移出';
+  @override
+  String get appearance => '外观';
+  @override
+  String get theme => '主题';
+  @override
+  String get themeSystem => '跟随系统';
+  @override
+  String get themeLight => '浅色';
+  @override
+  String get themeDark => '深色';
+  @override
+  String get language => '语言';
+  @override
+  String get languageSystem => '跟随系统';
+  @override
+  String get crossNetwork => '跨网络传输';
+  @override
+  String get mobileData => '用流量时也能传';
+  @override
+  String get mobileDataNote => '两台设备都装 Tailscale、登录同一个账号，再扫码配对一次。之后不在同一 WiFi 时，会自动经 Tailscale 连上（加密，不经过我们的服务器）。';
+  @override
+  String tailscaleOn({required Object ip}) => '本机已连上 Tailscale：${ip}';
+  @override
+  String get tailscaleOff => '本机还没连上 Tailscale';
+  @override
+  String get about => '关于';
+  @override
+  String get version => '版本';
+  @override
+  String basedOn({required Object base}) => '基于 LocalSend ${base}';
+  @override
+  String get license => '开源许可';
+  @override
+  String get licenseNote => '基于 LocalSend（Apache-2.0）改造';
+  @override
+  String get more => '更多设置';
+  @override
+  String get moreNote => '端口、加密、接收 PIN 等';
+  @override
+  String get footer => 'Shuttle · 只在你自己的设备之间传';
+}
+
+// Path: shareme.update
+class Translations$shareme$update$zh_CN extends Translations$shareme$update$en {
+  Translations$shareme$update$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String available({required Object version}) => '新版本 ${version}';
+  @override
+  String get install => '更新';
+  @override
+  String downloading({required Object percent}) => '正在下载 ${percent}%';
+  @override
+  String get installing => '正在更新…';
+  @override
+  String get verifyFailed => '新版本没通过校验，没有安装';
+  @override
+  String get check => '检查更新';
+  @override
+  String get checking => '检查中…';
+  @override
+  String get upToDate => '已是最新';
+  @override
+  String get checkFailed => '检查失败';
+  @override
+  String get found => '有新版本';
+  @override
+  String get auto => '自动检查更新';
+  @override
+  String get busy => '正在传文件，传完再更新';
+  @override
+  String get openFailed => '没能打开安装程序';
+  @override
+  String get downloadFailed => '下载失败，稍后再试';
+  @override
+  String versionBuild({required Object version, required Object build}) => '${version}（${build}）';
 }
 
 // Path: receiveTab.infoBox
@@ -956,7 +1936,7 @@ class Translations$settingsTab$general$zh_CN extends Translations$settingsTab$ge
   @override
   String get launchMinimized => '自动启动时隐藏窗口';
   @override
-  String get showInContextMenu => '在“发送到...”文件菜单中显示 LocalSend';
+  String get showInContextMenu => '在“发送到...”文件菜单中显示 Shuttle';
   @override
   String get animations => '动画效果';
 }
@@ -1058,7 +2038,7 @@ class Translations$settingsTab$other$zh_CN extends Translations$settingsTab$othe
   @override
   String get title => '其他';
   @override
-  String get support => '支持 LocalSend';
+  String get support => '支持 LocalSend（Shuttle 的上游项目）';
   @override
   String get donate => '捐赠';
   @override
@@ -1410,7 +2390,7 @@ class Translations$dialogs$localNetworkUnauthorized$zh_CN extends Translations$d
   @override
   String get title => _root.dialogs.noPermission.title;
   @override
-  String get description => 'LocalSend 在没有扫描本地网络的权限的情况下无法找到其他设备。请在设置中授予此权限。';
+  String get description => 'Shuttle 在没有扫描本地网络的权限的情况下无法找到其他设备。请在设置中授予此权限。';
   @override
   String get gotoSettings => '设置';
 }
@@ -1552,7 +2532,7 @@ class Translations$dialogs$sendModeHelp$zh_CN extends Translations$dialogs$sendM
   @override
   String get multiple => '发送文件给多个接收者。已选择的文件在发送后不会取消选择。';
   @override
-  String get link => '未安装 LocalSend 的接收者可以在浏览器中打开链接以下载选中的文件。';
+  String get link => '未安装 Shuttle 的接收者可以在浏览器中打开链接以下载选中的文件。';
 }
 
 // Path: dialogs.zoom

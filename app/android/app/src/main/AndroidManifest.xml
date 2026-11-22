@@ -21,14 +21,27 @@
     <!-- localsend: keep the app process alive while files are being received.
          FOREGROUND_SERVICE and POST_NOTIFICATIONS come from the flutter_foreground_task manifest. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Shuttle: one-tap request to exempt the app from battery optimization, under "Background receiving" in the
+         settings (a system dialog the user confirms) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Shuttle: camera for QR-code pairing (requested only when the scan page opens) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Android TV -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <!-- Shuttle: the settings hold this phone's private key and pairing keys, so they must stay out of cloud
+         backups and device-to-device migration. On Android 12+ allowBackup="false" does not cover
+         device-to-device transfer, hence the additional dataExtractionRules (res/xml/data_extraction_rules.xml). -->
     <application
-        android:label="LocalSend"
+        android:label="Shuttle"
         android:name="${applicationName}"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:targetApi="31"
         android:usesCleartextTraffic="true"
         android:banner="@drawable/banner"
         android:icon="@mipmap/ic_launcher"
@@ -74,11 +87,25 @@
 
         </activity>
 
+        <!-- Shuttle: "Send clipboard" quick settings tile -->
+        <service
+            android:name=".ClipboardTileService"
+            android:icon="@drawable/ic_tile_clipboard"
+            android:label="@string/shuttle_tile_clipboard"
+            android:process=":quick_tile_service"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true"
+            tools:targetApi="24">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE"/>
+            </intent-filter>
+        </service>
+
         <!-- Quick tile to launch the app -->
         <service
             android:name=".QuickTileService"
             android:icon="@mipmap/ic_launcher_quicktile_foreground"
-            android:label="LocalSend"
+            android:label="Shuttle"
             android:process=":quick_tile_service"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:exported="true"
@@ -94,6 +121,20 @@
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+
+        <!-- Shuttle: keep Google's datatransport component from reporting usage statistics (the ML Kit barcode
+             scanner uses it to send them to firebaselogging.googleapis.com). All three must be removed together:
+             with only the backend removed, events already stored on the phone keep the upload thread spinning; with
+             only the scheduler services removed, events are still written to the local database. -->
+        <service
+            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+            tools:node="remove" />
+        <service
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+            tools:node="remove" />
+        <receiver
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver"
+            tools:node="remove" />
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

@@ -7,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/color_mode.dart';
 import 'package:localsend_app/model/persistence/favorite_device.dart';
+import 'package:localsend_app/model/persistence/paired_record.dart';
 import 'package:localsend_app/model/persistence/quick_save_mode.dart';
 import 'package:localsend_app/model/persistence/receive_history_entry.dart';
+import 'package:localsend_app/model/persistence/sent_history_entry.dart';
 import 'package:localsend_app/model/send_mode.dart';
 import 'package:localsend_app/provider/window_dimensions_provider.dart';
 import 'package:localsend_app/util/alias_generator.dart';
@@ -18,6 +20,7 @@ import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/security_helper.dart';
 import 'package:localsend_app/util/shared_preferences/shared_preferences_file.dart';
 import 'package:localsend_app/util/shared_preferences/shared_preferences_portable.dart';
+import 'package:localsend_app/util/shareme_device_name.dart';
 import 'package:localsend_app/util/ui/animations_status.dart';
 import 'package:localsend_isolates/constants.dart';
 import 'package:localsend_isolates/model/device.dart';
@@ -32,11 +35,17 @@ part 'persistence_provider_migrations.dart';
 
 final _logger = Logger('PersistenceService');
 
+// Shuttle (installed build): when there is no settings.json next to Shuttle.exe, settings are stored in %APPDATA%\Shuttle.
+// Upstream uses %APPDATA%\LocalSend\settings.json, the same file as the official LocalSend, so both would share the device
+// identity and settings. Upstream also reads official LocalSend's older settings file
+// (%APPDATA%\org.localsend\localsend_app\shared_preferences.json) and migrates it; Shuttle doesn't read it.
 String get _windowsFile {
   final appData = Platform.environment['APPDATA'];
-  return '$appData\\LocalSend\\settings.json';
+  return '$appData\\Shuttle\\settings.json';
 }
 
+// Only _migrate2 in persistence_provider_migrations.dart still references this. _migrate2 only runs for settings version < 2,
+// and since Shuttle no longer reads this old file and new settings start at the latest version, it is never reached in practice.
 String get _windowsLegacyFile {
   final appData = Platform.environment['APPDATA'];
   return '$appData\\org.localsend\\localsend_app\\shared_preferences.json';
@@ -54,6 +63,12 @@ const _stunServers = 'ls_stun_servers';
 
 // Received file history
 const _receiveHistory = 'ls_receive_history';
+const _sentHistory = 'shareme_sent_history'; // Shuttle: sent history
+const _pairedDevices = 'shareme_paired_devices'; // Shuttle: paired (verified) devices
+const _lastSendTarget = 'shareme_last_send_target'; // Shuttle: last send target (fingerprint), the default when several devices are online
+const _aliasFromDeviceName = 'shareme_alias_from_device_name_v2'; // Shuttle: random alias / model code replaced by the device name (once)
+const _knownDeviceTypes = 'shareme_known_device_types'; // Shuttle: whether seen devices are PCs or phones (fingerprint → type), for avatars
+const _autoUpdate = 'shareme_auto_update'; // Shuttle: automatic update checks
 
 // Favorites
 const _favorites = 'ls_favorites';
@@ -114,32 +129,25 @@ class PersistenceService {
     SharedPreferences prefs;
 
     final portableStore = SharedPreferencesPortable();
-    bool usingLegacyStore = false;
     if (checkPlatform(const [TargetPlatform.windows, TargetPlatform.linux, TargetPlatform.macOS]) && portableStore.exists()) {
       _logger.info('Using portable settings.');
       SharedPreferencesStorePlatform.instance = portableStore;
     } else if (defaultTargetPlatform == TargetPlatform.windows) {
-      final legacyStore = SharedPreferencesFile(filePath: _windowsLegacyFile);
-      if (legacyStore.exists()) {
-        _logger.info('Using legacy settings. Will migrate in the next step.');
-        SharedPreferencesStorePlatform.instance = legacyStore;
-        usingLegacyStore = true;
-      } else {
-        SharedPreferencesStorePlatform.instance = SharedPreferencesFile(filePath: _windowsFile);
-      }
+      // Shuttle: don't read official LocalSend's old settings file (see the comment above _windowsFile)
+      SharedPreferencesStorePlatform.instance = SharedPreferencesFile(filePath: _windowsFile);
     }
 
     final bool isFirstAppStart;
     final existingPrefs = await SharedPreferencesStorePlatform.instance.getAll();
     final existingVersion = existingPrefs['flutter.$_version'] as int?;
     _logger.info('Existing version: $existingVersion');
-    isFirstAppStart = existingVersion == null && !usingLegacyStore && !existingPrefs.keys.any((key) => key.startsWith('flutter.ls_'));
+    isFirstAppStart = existingVersion == null && !existingPrefs.keys.any((key) => key.startsWith('flutter.ls_'));
     if (isFirstAppStart) {
       await SharedPreferencesStorePlatform.instance.setValue('Int', 'flutter.$_version', _latestVersion);
     } else {
       // Unversioned profiles in the current store may already contain string modes.
       // Only apply the repair migration; older migrations would replace those modes.
-      final fromVersion = existingVersion ?? (usingLegacyStore ? 1 : 3);
+      final fromVersion = existingVersion ?? 3;
       if (fromVersion < _latestVersion) {
         await _runMigrations(fromVersion);
       }
@@ -148,14 +156,15 @@ class PersistenceService {
     try {
       prefs = await SharedPreferences.getInstance();
     } catch (e) {
-      if (checkPlatform([TargetPlatform.windows])) {
-        _logger.info('Could not initialize SharedPreferences, trying to delete corrupted settings file', e);
-        File(_windowsFile).deleteSync();
-        prefs = await SharedPreferences.getInstance();
-      } else {
-        throw Exception('Could not initialize SharedPreferences');
-      }
+      // Shuttle: upstream deletes the Windows settings file here (in portable mode, even the wrong file), losing the device
+      // identity. Null values in the settings file are now dropped on read (shared_preferences_file.dart), so this is normally
+      // unreachable; if it is reached anyway, throw instead of deleting the file.
+      _logger.severe('Could not initialize SharedPreferences', e);
+      throw Exception('Could not initialize SharedPreferences');
     }
+
+    // Shuttle: the language follows the system (Chinese on a Chinese system, English otherwise), as on the phone. Earlier desktop
+    // builds saved Simplified Chinese on first launch; those installs, and any where the user picked a language, keep their setting.
 
     // Locale configuration upon persistence initialisation to prevent unlocalised Alias generation
     final persistedLocale = prefs.getString(_localeKey);
@@ -169,8 +178,19 @@ class PersistenceService {
       await prefs.setString(_showToken, const Uuid().v4());
     }
 
+    // Shuttle: the alias is the system device name (PC name / phone name) instead of a random "adjective + fruit". Older installs
+    // still using a random name are switched once; names the user changed stay (shareme_device_name.dart)
     if (prefs.getString(_aliasKey) == null) {
-      await prefs.setString(_aliasKey, generateRandomAlias());
+      await prefs.setString(_aliasKey, await defaultDeviceAlias());
+      await prefs.setBool(_aliasFromDeviceName, true);
+    } else if (prefs.getBool(_aliasFromDeviceName) != true) {
+      final current = prefs.getString(_aliasKey)!;
+      if (await shouldUseDeviceAlias(current)) {
+        final name = await defaultDeviceAlias();
+        _logger.info('Replacing the random alias "$current" with the system device name "$name"');
+        await prefs.setString(_aliasKey, name);
+      }
+      await prefs.setBool(_aliasFromDeviceName, true);
     }
 
     if (prefs.getString(_securityContext) == null) {
@@ -220,6 +240,13 @@ class PersistenceService {
     return SharedPreferencesStorePlatform.instance is SharedPreferencesPortable;
   }
 
+  /// Shuttle: how the desktop settings file was loaded this time (recovered / had to start over); null on phones and macOS,
+  /// which use system storage. Used when the UI needs to show a notice.
+  SettingsLoadOutcome? get settingsLoadOutcome {
+    final store = SharedPreferencesStorePlatform.instance;
+    return store is SharedPreferencesFile ? store.loadOutcome : null;
+  }
+
   StoredSecurityContext getSecurityContext() {
     final contextRaw = _prefs.getString(_securityContext)!;
     return StoredSecurityContext.fromJson(jsonDecode(contextRaw));
@@ -263,6 +290,67 @@ class PersistenceService {
   Future<void> setReceiveHistory(List<ReceiveHistoryEntry> entries) async {
     final historyRaw = entries.map((entry) => jsonEncode(entry.toJson())).toList();
     await _prefs.setStringList(_receiveHistory, historyRaw);
+  }
+
+  // Shuttle: sent history
+  List<SentHistoryEntry> getSentHistory() {
+    final historyRaw = _prefs.getStringList(_sentHistory) ?? [];
+    final result = <SentHistoryEntry>[];
+    for (final entry in historyRaw) {
+      try {
+        result.add(SentHistoryEntry.fromJson(jsonDecode(entry)));
+      } catch (e) {
+        _logger.warning('Could not parse sent history entry', e);
+      }
+    }
+    return result;
+  }
+
+  Future<void> setSentHistory(List<SentHistoryEntry> entries) async {
+    final historyRaw = entries.map((entry) => jsonEncode(entry.toJson())).toList();
+    await _prefs.setStringList(_sentHistory, historyRaw);
+  }
+
+  /// Shuttle: paired (verified) devices
+  List<PairedRecord> getPairedRecords() {
+    final raw = _prefs.getStringList(_pairedDevices) ?? [];
+    final result = <PairedRecord>[];
+    for (final entry in raw) {
+      try {
+        result.add(PairedRecord.fromJson(jsonDecode(entry) as Map<String, dynamic>));
+      } catch (e) {
+        _logger.warning('Could not parse paired record', e);
+      }
+    }
+    return result;
+  }
+
+  Future<void> setPairedRecords(List<PairedRecord> records) async {
+    await _prefs.setStringList(_pairedDevices, records.map((r) => jsonEncode(r.toJson())).toList());
+  }
+
+  /// Shuttle: the type of each seen device (fingerprint → DeviceType.name). Favorites don't store the type, so avatars rely on
+  /// this to show the right icon while a device is offline.
+  Map<String, String> getKnownDeviceTypes() {
+    final raw = _prefs.getString(_knownDeviceTypes);
+    if (raw == null) return {};
+    try {
+      return (jsonDecode(raw) as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String));
+    } catch (e) {
+      _logger.warning('Could not parse known device types', e);
+      return {};
+    }
+  }
+
+  Future<void> setKnownDeviceTypes(Map<String, String> types) async {
+    await _prefs.setString(_knownDeviceTypes, jsonEncode(types));
+  }
+
+  /// Shuttle: the device last sent to (fingerprint)
+  String? getLastSendTarget() => _prefs.getString(_lastSendTarget);
+
+  Future<void> setLastSendTarget(String fingerprint) async {
+    await _prefs.setString(_lastSendTarget, fingerprint);
   }
 
   List<FavoriteDevice> getFavorites() {
@@ -486,7 +574,9 @@ class PersistenceService {
   }
 
   bool isMinimizeToTray() {
-    return _prefs.getBool(_minimizeToTray) ?? false;
+    // Shuttle: on Windows and macOS, closing the window minimizes to the tray (the menu bar on macOS) and keeps receiving in the
+    // background by default. LocalSend's default is to quit. Users can still change it in "More settings".
+    return _prefs.getBool(_minimizeToTray) ?? checkPlatform([TargetPlatform.windows, TargetPlatform.macOS]);
   }
 
   Future<void> setMinimizeToTray(bool minimizeToTray) async {
@@ -598,6 +688,13 @@ class PersistenceService {
 
   Future<void> setWhatsNew(String version) async {
     await _prefs.setString(_whatsNewKey, version);
+  }
+
+  /// Shuttle: automatic update checks (on by default)
+  bool getAutoUpdate() => _prefs.getBool(_autoUpdate) ?? true;
+
+  Future<void> setAutoUpdate(bool enabled) async {
+    await _prefs.setBool(_autoUpdate, enabled);
   }
 
   Future<void> clear() async {

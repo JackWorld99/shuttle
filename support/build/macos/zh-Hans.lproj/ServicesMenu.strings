@@ -1,0 +1,2 @@
+/* shareMe: Chinese name of the "Send to Shuttle" item in the Services menu (Info.plist NSServices). */
+"Send to Shuttle" = "用 Shuttle 发送";

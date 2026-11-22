@@ -239,7 +239,12 @@ pub(super) fn create_reqwest_client(
         // Peers never redirect; following one would talk to a different host
         // than the one whose certificate is being verified.
         .redirect(reqwest::redirect::Policy::none())
-        .dns_resolver(Arc::new(ScopedHostResolver));
+        .dns_resolver(Arc::new(ScopedHostResolver))
+        // shareMe (2026-11-15): give up on connecting after 10 s. Without it a peer that silently drops
+        // packets (e.g. the PC is on but Shuttle is closed and the firewall stays quiet) took ~30 s per
+        // attempt on a Xiaomi phone before "not sent" showed. Only the connect phase is limited:
+        // waiting for the receiver to accept and the upload itself are not affected.
+        .connect_timeout(std::time::Duration::from_secs(10));
 
     if let Some(timeout) = timeout {
         builder = builder.timeout(timeout);

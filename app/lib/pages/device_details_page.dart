@@ -51,7 +51,7 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> with Refena {
         builder: (_) => FavoriteDeleteDialog(favoriteEntry),
       );
       if (result == true) {
-        await ref.redux(favoritesProvider).dispatchAsync(RemoveFavoriteAction(deviceFingerprint: widget.device.fingerprint));
+        ref.redux(favoritesProvider).dispatch(RemoveFavoriteAction(deviceFingerprint: widget.device.fingerprint));
       }
     } else {
       await showDialog(

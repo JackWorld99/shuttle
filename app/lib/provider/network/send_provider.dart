@@ -1,19 +1,24 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
+import 'package:localsend_app/model/persistence/sent_history_entry.dart';
 import 'package:localsend_app/model/send_mode.dart';
 import 'package:localsend_app/model/state/send/send_session_state.dart';
 import 'package:localsend_app/model/state/send/sending_file.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
-import 'package:localsend_app/pages/progress_page.dart';
-import 'package:localsend_app/pages/send_page.dart';
+import 'package:localsend_app/pages/shareme_send_page.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
+import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/file_transfer_provider.dart';
 import 'package:localsend_app/provider/http_provider.dart';
+import 'package:localsend_app/provider/network/nearby_devices_provider.dart' show isInsecureTrustedDevice;
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
+import 'package:localsend_app/provider/sent_history_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
+import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/dialogs/pin_dialog.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
@@ -156,60 +161,76 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     if (!background) {
       // ignore: use_build_context_synchronously, unawaited_futures
       Routerino.context.push(
-        () => SendPage(showAppBar: false, closeSessionOnClose: true, sessionId: sessionId),
+        // Shuttle: SmSendPage replaces LocalSend's SendPage (one page covers waiting → transfer → delivered)
+        () => SmSendPage(sessionId: sessionId),
         transition: RouterinoTransition.fade(),
       );
     }
 
+    // Shuttle security: sending to "my devices" requires an encrypted connection. The device list already filters this once
+    // (RegisterDeviceAction); check again here: if the selected address is unencrypted anyway, don't send, and say why.
+    final trusted = ref.read(favoritesProvider).map((f) => f.fingerprint).toSet();
+    if (isInsecureTrustedDevice(device: target, httpsEnabled: ref.read(settingsProvider).https, trustedFingerprints: trusted)) {
+      state = state.updateSession(
+        sessionId: sessionId,
+        state: (s) => s?.copyWith(status: SessionStatus.finishedWithErrors, errorMessage: t.shareme.send.insecure),
+      );
+      return;
+    }
+
     // Calculate the checksums which are part of the request.
-    // The files are read and hashed in Rust, one file after another.
+    // The files are read and hashed in Rust, several files at the same time
+    // (Shuttle: one file after another kept a batch of 200 photos waiting for ~6 s).
+    // The checksums are mapped back by file ID, so the request lists the files in the selected order.
     final hashes = <String, String>{};
     if (createChecksums) {
       final hashCancelToken = rust_cancel.createCancellationToken();
       _hashCancelTokens[sessionId] = hashCancelToken;
       try {
-        for (final (:id, :file) in selectedFiles) {
-          try {
-            hashes[id] = await calculateFileHash(
-              path: file.path,
-              bytes: file.bytes,
-              cancelToken: hashCancelToken,
-              onProgress: (bytes) {
-                if (state[sessionId] == null) {
-                  // session has been canceled while calculating the checksums
-                  return;
-                }
-                ref
-                    .notifier(fileTransferProvider)
-                    .setProgress(
-                      sessionId: sessionId,
-                      fileId: id,
-                      progress: file.size == 0 ? 1 : (bytes / file.size).clamp(0, 1),
-                    );
-              },
-            );
-          } catch (e) {
-            if (state[sessionId] != null) {
+        await calculateFileHashes(
+          files: [for (final (id: _, :file) in selectedFiles) (path: file.path, bytes: file.bytes)],
+          cancelToken: hashCancelToken,
+          concurrency: defaultHashConcurrency,
+          // session has been canceled while calculating the checksums
+          shouldStop: () => state[sessionId] == null,
+          onProgress: (index, bytes) {
+            if (state[sessionId] == null) {
+              // session has been canceled while calculating the checksums
+              return;
+            }
+            final (:id, :file) = selectedFiles[index];
+            ref
+                .notifier(fileTransferProvider)
+                .setProgress(
+                  sessionId: sessionId,
+                  fileId: id,
+                  progress: file.size == 0 ? 1 : (bytes / file.size).clamp(0, 1),
+                );
+          },
+          onFileDone: (index, hash, error) {
+            if (state[sessionId] == null) {
+              // session has been canceled while calculating the checksums.
+              // Errors caused by the cancellation are not logged.
+              return;
+            }
+            final (:id, :file) = selectedFiles[index];
+            if (hash != null) {
+              hashes[id] = hash;
+            } else {
               // Sending the checksum is optional, so a file that cannot be read
               // here still gets a chance to be sent.
-              // Errors caused by the cancellation are not logged.
-              _logger.warning('Could not calculate the checksum of ${file.name}', e);
+              _logger.warning('Could not calculate the checksum of ${file.name}', error);
             }
-          }
 
-          if (state[sessionId] == null) {
-            // session has been canceled while calculating the checksums
-            return;
-          }
-
-          // Also set for files whose hashing failed, so the progress bar stays
-          // consistent with the files that are left.
-          ref.notifier(fileTransferProvider).setProgress(sessionId: sessionId, fileId: id, progress: 1);
-          state = state.updateSession(
-            sessionId: sessionId,
-            state: (s) => s?.copyWith(hashedFileCount: s.hashedFileCount + 1),
-          );
-        }
+            // Also set for files whose hashing failed, so the progress bar stays
+            // consistent with the files that are left.
+            ref.notifier(fileTransferProvider).setProgress(sessionId: sessionId, fileId: id, progress: 1);
+            state = state.updateSession(
+              sessionId: sessionId,
+              state: (s) => s?.copyWith(hashedFileCount: s.hashedFileCount + 1),
+            );
+          },
+        );
       } finally {
         _hashCancelTokens.remove(sessionId);
       }
@@ -386,12 +407,20 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
         ),
       );
 
-      if (state[sessionId]?.background == false) {
+      final session = state[sessionId];
+      if (session?.background == false) {
         // Pop back to the existing HomePage instead of pushing a new one:
         // a second HomePage attaches a second PageView to the shared PageController,
         // and removing routes without animation orphans a hero in flight.
-        ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
+        ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.transfer));
         ref.global.dispatch(NavigateAction.popUntilRoot());
+
+        // Shuttle: text / links skip the progress page and go back home as soon as the receiver accepts, so tell the user it was sent.
+        final onlyMessages = session!.files.values.every((f) => f.file.fileType == FileType.text && f.file.preview != null);
+        if (onlyMessages) {
+          // ignore: use_build_context_synchronously
+          Routerino.context.showSnackBar(t.shareme.text.sentTo(name: session.target.alias));
+        }
       }
 
       closeSession(sessionId);
@@ -422,8 +451,8 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
               removeUntil: HomePage,
               transition: RouterinoTransition.fade(),
               // immediately is not possible: https://github.com/flutter/flutter/issues/121910
-              builder: () => ProgressPage(
-                showAppBar: background,
+              // Shuttle: SmSendPage replaces LocalSend's ProgressPage (the receiving side still uses ProgressPage)
+              builder: () => SmSendPage(
                 closeSessionOnClose: !background,
                 sessionId: sessionId,
               ),
@@ -783,10 +812,65 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     TransferNotification.stop(sessionId);
     _hashCancelTokens.remove(sessionId)?.cancel();
     _prepareUploadCancelTokens.remove(sessionId)?.cancel();
+    _recordSentHistory(sessionState); // Shuttle: must run before the session (and its file statuses) is removed
     state = state.removeSession(ref, sessionId);
     if (sessionState.status == SessionStatus.finished && ref.read(settingsProvider).sendMode == SendMode.single) {
       // clear selected files
       ref.redux(selectedSendingFilesProvider).dispatch(ClearSelectionAction());
+    }
+  }
+
+  /// Shuttle: records a "sent" history entry when the session ends. LocalSend only records received items (upstream issue #1269).
+  /// Only the file name, type, size and original location are stored; files are not copied.
+  void _recordSentHistory(SendSessionState session) {
+    try {
+      final transfers = ref.read(fileTransferProvider);
+      final values = session.files.values.toList();
+      final message = values.length == 1 && values.first.file.fileType == FileType.text ? values.first.file.preview : null;
+      final files = message != null
+          ? <SentHistoryFile>[]
+          : [
+              for (final f in values)
+                SentHistoryFile(
+                  fileName: f.file.fileName,
+                  fileType: f.file.fileType,
+                  size: f.file.size,
+                  path: f.path,
+                  assetId: f.asset?.id,
+                  delivered: transfers.getStatus(sessionId: session.sessionId, fileId: f.file.id) == FileStatus.finished,
+                ),
+            ];
+      final delivered = files.where((f) => f.delivered).length;
+      final result = switch (session.status) {
+        SessionStatus.finished when message != null || delivered == files.length => SentHistoryResult.delivered,
+        SessionStatus.finished => delivered == 0 ? SentHistoryResult.declined : SentHistoryResult.partial, // receiver accepted only some / none
+        SessionStatus.finishedWithErrors => delivered > 0 ? SentHistoryResult.partial : SentHistoryResult.error,
+        SessionStatus.declined => SentHistoryResult.declined,
+        SessionStatus.canceledByReceiver => SentHistoryResult.canceledByReceiver,
+        SessionStatus.recipientBusy => SentHistoryResult.recipientBusy,
+        SessionStatus.tooManyAttempts => SentHistoryResult.tooManyAttempts,
+        // Closed while still waiting for the receiver / while sending = you canceled
+        SessionStatus.waiting || SessionStatus.sending || SessionStatus.canceledBySender => SentHistoryResult.canceledBySender,
+      };
+      final ms = session.endTime ?? session.startTime ?? DateTime.now().millisecondsSinceEpoch;
+      ref
+          .redux(sentHistoryProvider)
+          .dispatch(
+            AddSentHistoryAction(
+              SentHistoryEntry(
+                id: session.sessionId,
+                targetAlias: session.target.alias,
+                targetFingerprint: session.target.fingerprint,
+                timestamp: DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true),
+                files: files,
+                message: message,
+                result: result,
+                errorMessage: session.errorMessage ?? values.map((f) => f.errorMessage).nonNulls.firstOrNull,
+              ),
+            ),
+          );
+    } catch (e, st) {
+      _logger.warning('Could not record sent history', e, st);
     }
   }
 

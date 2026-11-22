@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Shuttle: runs the checks for outside pull requests in the public repository; read-only, touches no secrets
+permissions:
+  contents: read
+
 env:
   FLUTTER_VERSION: "3.47.9"
 

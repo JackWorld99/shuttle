@@ -10,6 +10,7 @@ import 'package:localsend_app/config/refena.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
+import 'package:localsend_app/pages/tabs/transfer_tab.dart' show chooseTargetAndSend;
 import 'package:localsend_app/pages/whats_new_page.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/app_arguments_provider.dart';
@@ -18,11 +19,9 @@ import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/network/webrtc/signaling_provider.dart';
 import 'package:localsend_app/provider/persistence_provider.dart';
-// [FOSS_REMOVE_START]
-import 'package:localsend_app/provider/purchase_provider.dart';
-// [FOSS_REMOVE_END]
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
+import 'package:localsend_app/provider/shareme_update_provider.dart';
 import 'package:localsend_app/provider/tv_provider.dart';
 import 'package:localsend_app/provider/version_provider.dart';
 import 'package:localsend_app/provider/window_dimensions_provider.dart';
@@ -37,18 +36,22 @@ import 'package:localsend_app/util/native/macos_channel.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
 import 'package:localsend_app/util/notification_strings.dart';
+import 'package:localsend_app/util/shareme_diagnostics.dart';
 import 'package:localsend_app/util/ui/dynamic_colors.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/dialogs/local_network_dialog.dart';
+import 'package:localsend_app/widget/shareme/device_avatar.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/dto/file_dto.dart';
 import 'package:localsend_isolates/model/dto/multicast_dto.dart';
 import 'package:localsend_isolates/rust/api/logging.dart' as rust_logging;
+import 'package:localsend_isolates/util/android_channel.dart' show deletePendingMediaStoreFilesAndroid;
 import 'package:localsend_isolates/util/logger.dart';
 import 'package:localsend_isolates/util/rust_init.dart';
 import 'package:localsend_isolates/util/show_instance.dart';
 import 'package:localsend_isolates/util/transfer_notification.dart';
 import 'package:logging/logging.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:refena_flutter/addons.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
@@ -62,6 +65,7 @@ Future<RefenaContainer> preInit(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   initLogger(args.contains('-v') || args.contains('--verbose') ? Level.ALL : Level.INFO);
+  bufferEarlyDiagnostics(); // Shuttle: so settings-file recovery events reach the diagnostics log (shareme_diagnostics.dart)
 
   if (checkPlatform([TargetPlatform.linux])) {
     try {
@@ -93,6 +97,9 @@ Future<RefenaContainer> preInit(List<String> args) async {
     await enableContextMenu();
   }
 
+  // Shuttle: the "seen device types" used by device avatars
+  initKnownDeviceTypes(persistenceService.getKnownDeviceTypes(), persistenceService.setKnownDeviceTypes);
+
   await initI18n();
 
   TransferNotification.init(notificationStrings);
@@ -112,6 +119,9 @@ Future<RefenaContainer> preInit(List<String> args) async {
     if (handedOver) {
       exit(0); // Another instance does exist
     }
+
+    // Shuttle: diagnostics log (auto-update, startup / exit), Windows only; started after the single-instance check (shareme_diagnostics.dart)
+    unawaited(PackageInfo.fromPlatform().then((info) => startDiagnostics(version: '${info.version}+${info.buildNumber}')));
 
     // initialize tray AFTER i18n has been initialized
     try {
@@ -196,6 +206,8 @@ StreamSubscription? _sharedMediaSubscription;
 
 /// Will be called when home page has been initialized
 Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
+  // Before the server starts, so no transfer of this run can have begun yet.
+  final startedAt = DateTime.now();
   await updateSystemOverlayStyle(context);
 
   if (checkPlatform([TargetPlatform.android])) {
@@ -234,6 +246,8 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
     _logger.warning('Starting discovery listener failed', e);
   }
 
+  ref.notifier(smUpdateProvider).start(); // Shuttle: auto-update (first check 1 minute after launch)
+
   // ignore: dead_code
   if (webRTCEnabled) {
     ref.redux(signalingProvider).dispatch(SetupSignalingConnection());
@@ -255,7 +269,7 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
         for (final string in pendingStrings) {
           ref.redux(selectedSendingFilesProvider).dispatch(AddMessageAction(message: string));
         }
-        ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
+        ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.transfer));
       });
 
       await setupMethodCallHandler();
@@ -309,6 +323,20 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
     ref.global.dispatchAsync(ClearCacheAction()); // ignore: unawaited_futures
   }
 
+  if (appStart && checkPlatform([TargetPlatform.android]) && (ref.read(deviceInfoProvider).androidSdkInt ?? 0) >= 29) {
+    // Shuttle: on Android 10+, received images/videos are written straight into gallery entries (hidden until complete). If the app
+    // was killed mid-transfer, such incomplete entries linger and waste space, so delete them at startup. Only entries created
+    // before this launch are deleted, so a transfer that has just started is never touched.
+    unawaited(
+      deletePendingMediaStoreFilesAndroid(createdBefore: startedAt).then(
+        (n) {
+          if (n > 0) _logger.info('Deleted $n incomplete gallery entries');
+        },
+        onError: (Object e) => _logger.warning('Could not delete incomplete gallery entries', e),
+      ),
+    );
+  }
+
   if (!ref.read(persistenceProvider).isFirstAppStart) {
     WhatsNewPage? whatsNew = WhatsNewPage.fromLastVersion(lastVersion: ref.read(persistenceProvider).getWhatsNew());
     if (whatsNew != null) {
@@ -321,12 +349,8 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
     await ref.read(persistenceProvider).setWhatsNew(version.version);
   });
 
-  // [FOSS_REMOVE_START]
-  if (checkPlatformSupportPayment()) {
-    // ignore: unawaited_futures
-    ref.redux(purchaseProvider).dispatchAsync(InitPurchaseStream());
-  }
-  // [FOSS_REMOVE_END]
+  // Shuttle: in-app purchases are removed (as in LocalSend's FOSS build), so startup no longer connects to the Play Store billing
+  // service, whose library reports usage statistics to Google.
 }
 
 class _HandleShareIntentAction extends AsyncGlobalAction {
@@ -351,7 +375,16 @@ class _HandleShareIntentAction extends AsyncGlobalAction {
           ),
         );
 
-    ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
+    ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.transfer));
+
+    // Shuttle: content shared from another app opens the "send to" picker and is only sent once a device is tapped.
+    // It deliberately doesn't go straight to a default device: any app on the phone can "share" to Shuttle, and without
+    // confirmation the content would land on the PC unasked (text copied to its clipboard, files saved automatically).
+    // See the confirm parameter of chooseTargetAndSend.
+    final context = Routerino.context;
+    if (context.mounted && ref.read(selectedSendingFilesProvider).isNotEmpty) {
+      await chooseTargetAndSend(context, confirm: true);
+    }
   }
 }
 
@@ -366,7 +399,7 @@ class _HandleAppStartArgumentsAction extends AsyncGlobalAction {
   Future<void> reduce() async {
     final filesAdded = await ref.redux(selectedSendingFilesProvider).dispatchAsyncTakeResult(LoadSelectionFromArgsAction(args));
     if (filesAdded) {
-      ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
+      ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.transfer));
     }
   }
 }

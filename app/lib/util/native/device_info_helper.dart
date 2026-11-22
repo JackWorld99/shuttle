@@ -85,6 +85,15 @@ Future<String?> getDeviceName() async {
   }
 
   if (defaultTargetPlatform == TargetPlatform.macOS) {
+    // Shuttle: read the "Computer Name" via the system API first. This runs on first launch, and the sandbox may not allow a scutil subprocess.
+    try {
+      final name = (await DeviceInfoPlugin().macOsInfo).computerName.trim();
+      if (name.isNotEmpty) {
+        return name;
+      }
+    } catch (e, stackTrace) {
+      _logger.warning('Could not get macOS computer name', e, stackTrace);
+    }
     final result = await Process.run('scutil', ['--get', 'ComputerName']);
     return result.stdout.toString().trim();
   }

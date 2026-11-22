@@ -24,6 +24,18 @@ class ReceiveHistoryEntry with ReceiveHistoryEntryMappable {
   final String senderAlias;
   final DateTime timestamp;
 
+  /// Shuttle: the sender's certificate fingerprint (from the mTLS certificate in encrypted mode, so it can't be forged).
+  /// Used to stamp the sender's badge on the film strip. Null for older entries, which lack this field.
+  final String? senderFingerprint;
+
+  /// Shuttle: whether this file passed SHA-256 verification (the sender attached a hash, the receiver has verification on,
+  /// and they match). On a mismatch the Rust core fails the file, so it never gets an entry. null = unknown (older entries).
+  final bool? checksumVerified;
+
+  /// Shuttle: the receive this file belongs to (receive session ID); the history page groups a batch of files into one row by it.
+  /// Null for older entries (grouped by guessing from sender + close timestamps).
+  final String? batchId;
+
   const ReceiveHistoryEntry({
     required this.id,
     required this.fileName,
@@ -34,6 +46,9 @@ class ReceiveHistoryEntry with ReceiveHistoryEntryMappable {
     required this.fileSize,
     required this.senderAlias,
     required this.timestamp,
+    this.senderFingerprint,
+    this.checksumVerified,
+    this.batchId,
   });
 
   /// Format string using the system date and time format.

@@ -18,6 +18,7 @@ import 'package:localsend_app/util/native/taskbar_helper.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/device_bage.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
+import 'package:localsend_app/widget/shareme/send_text_sheet.dart' show looksLikeLink;
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/dto/file_dto.dart';
 import 'package:localsend_isolates/model/session_status.dart';
@@ -48,7 +49,8 @@ class ReceivePageVm {
     required this.onAccept,
     required this.onDecline,
     required this.onClose,
-  }) : isLink = message != null && !message.trim().contains(RegExp(r'\s')) && (Uri.tryParse(message.trim())?.isAbsolute ?? false);
+    // Shuttle security: only http / https messages count as links (see looksLikeLink)
+  }) : isLink = message != null && looksLikeLink(message);
 }
 
 class ReceivePage extends StatefulWidget {

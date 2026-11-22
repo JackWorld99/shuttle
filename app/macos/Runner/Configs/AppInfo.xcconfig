@@ -5,10 +5,12 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = LocalSend
+// shareMe: Shuttle.app, bundle id = the Android applicationId. A separate id keeps Shuttle's sandbox
+// container, settings and permissions apart from an installed LocalSend.
+PRODUCT_NAME = Shuttle
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = org.localsend.localsendApp
+PRODUCT_BUNDLE_IDENTIFIER = com.jackw.shareme
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2022-2026 Tien Do Nam

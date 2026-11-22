@@ -57,7 +57,8 @@ Future<bool> isContextMenuEnabled() async {
   }
 }
 
-const _windowsFileName = 'LocalSend';
+// Shuttle: the name shown in the Explorer "Send to" menu, kept separate from the official LocalSend
+const _windowsFileName = 'Shuttle';
 
 String _getWindowsFilePath(String appName) {
   final appData = Platform.environment['APPDATA'];

@@ -36,8 +36,9 @@ class AppDelegate: FlutterAppDelegate {
     override func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.servicesProvider = self
         
-        let localsendBrandColor = NSColor(red: 0, green: 0.392, blue: 0.353, alpha: 0.8) // #00645a
-        DockProgress.style = .squircle(color: localsendBrandColor)
+        // shareMe: Shuttle's warm vermilion (#E2582B, the app icon's middle tone) instead of LocalSend teal
+        let shuttleBrandColor = NSColor(red: 0.886, green: 0.345, blue: 0.169, alpha: 0.8)
+        DockProgress.style = .squircle(color: shuttleBrandColor)
         
         isLaunchedAsLoginItem = LaunchAtLogin.wasLaunchedAtLogin
         for result in pendingLoginItemResults {

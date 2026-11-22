@@ -54,7 +54,7 @@ class ReceiveHistoryPage extends StatelessWidget {
         context,
         entry.fileType,
         entry.path!,
-        onDeleteTap: () => dispatcher.dispatchAsync(RemoveHistoryEntryAction(entry.id)),
+        onDeleteTap: () => dispatcher.dispatch(RemoveHistoryEntryAction(entry.id)),
       );
     }
   }
@@ -105,7 +105,7 @@ class ReceiveHistoryPage extends StatelessWidget {
                           );
 
                           if (context.mounted && result == true) {
-                            await context.redux(receiveHistoryProvider).dispatchAsync(RemoveAllHistoryEntriesAction());
+                            context.redux(receiveHistoryProvider).dispatch(RemoveAllHistoryEntriesAction());
                           }
                         },
                   icon: const Icon(Icons.delete),
@@ -219,7 +219,7 @@ class ReceiveHistoryPage extends StatelessWidget {
                               break;
                             case _EntryOption.delete:
                               // ignore: use_build_context_synchronously
-                              await context.redux(receiveHistoryProvider).dispatchAsync(RemoveHistoryEntryAction(entry.id));
+                              context.redux(receiveHistoryProvider).dispatch(RemoveHistoryEntryAction(entry.id));
                               break;
                           }
                         },

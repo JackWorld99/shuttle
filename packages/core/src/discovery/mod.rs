@@ -25,6 +25,35 @@ use tokio::sync::{mpsc, oneshot};
 /// peers, which answer quickly or not at all.
 pub const DEFAULT_DISCOVERY_TIMEOUT: Duration = Duration::from_millis(500);
 
+/// shareMe: timeout of register requests to known channels in the CGNAT range
+/// `100.64.0.0/10`, which Tailscale hands out. The first request to such a peer
+/// often has to set up the tunnel before TLS can start (a WireGuard handshake;
+/// over mobile data 50–180 ms per round trip), which regularly exceeds
+/// [`DEFAULT_DISCOVERY_TIMEOUT`]. The next attempt then succeeds, so the peer
+/// only showed up after a manual refresh (measured 2026-11-13). Subnet scans
+/// keep the short timeout; they never reach these addresses.
+pub const OVERLAY_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Whether `host` is an overlay address: an IPv4 address in `100.64.0.0/10`,
+/// the range Tailscale (and other overlay networks) assign, or an IPv6
+/// address in Tailscale's `fd7a:115c:a1e0::/48`.
+fn is_overlay_host(host: &str) -> bool {
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(ip)) => ip.octets()[0] == 100 && ip.octets()[1] & 0xC0 == 64,
+        Ok(IpAddr::V6(ip)) => ip.segments()[..3] == [0xfd7a, 0x115c, 0xa1e0],
+        Err(_) => false,
+    }
+}
+
+/// shareMe: whether a confirmation over `device`'s channel shows that the
+/// local network itself works, i.e. it did not come over an overlay
+/// (Tailscale) address.
+fn is_local_confirmation(device: &DiscoveredDevice) -> bool {
+    match &device.channel {
+        DeviceChannel::Http(http) => !is_overlay_host(&http.host),
+    }
+}
+
 /// Capacity of the internal multicast event channel.
 const MULTICAST_CHANNEL_SIZE: usize = 64;
 
@@ -120,9 +149,11 @@ struct DiscoveryState {
     /// The interface addresses a subnet scan is currently running for.
     scanning: std::sync::Mutex<HashSet<Ipv4Addr>>,
 
-    /// Number of confirmations in this run, on which
-    /// [`DiscoveryHandle::discover_staged`] decides whether to escalate.
-    confirmations: AtomicU64,
+    /// Number of confirmations in this run over local (non-overlay) channels,
+    /// on which [`DiscoveryHandle::discover_staged`] decides whether to
+    /// escalate. shareMe: confirmations over Tailscale do not count, see
+    /// [`is_local_confirmation`].
+    local_confirmations: AtomicU64,
 }
 
 impl DiscoveryState {
@@ -143,12 +174,22 @@ impl DiscoveryState {
     /// is not known before they answer. The fingerprint is then read off the
     /// handshake and pinned by connections that transfer data.
     fn unpinned_client(&self) -> Result<LsHttpClientV2, ClientError> {
+        self.unpinned_client_with(self.timeout)
+    }
+
+    fn unpinned_client_with(&self, timeout: Duration) -> Result<LsHttpClientV2, ClientError> {
         LsHttpClientV2::try_new(
             &self.identity.private_key_pem,
             &self.identity.cert_pem,
             None,
-            Some(self.timeout),
+            Some(timeout),
         )
+    }
+
+    /// shareMe: the timeout for probing a known channel at an overlay address,
+    /// see [`OVERLAY_DISCOVERY_TIMEOUT`]. Never shorter than the configured one.
+    fn overlay_timeout(&self) -> Duration {
+        self.timeout.max(OVERLAY_DISCOVERY_TIMEOUT)
     }
 
     /// Registers with `host:port` and, when a device answers, puts it into
@@ -187,7 +228,9 @@ impl DiscoveryState {
     /// emits the resulting event. Returns whether the device is new, and
     /// its stored state after the merge.
     async fn found(&self, device: DiscoveredDevice) -> (bool, StatefulDevice) {
-        self.confirmations.fetch_add(1, Ordering::Relaxed);
+        if is_local_confirmation(&device) {
+            self.local_confirmations.fetch_add(1, Ordering::Relaxed);
+        }
         let (event, merged) = self.store.upsert(device, SystemTime::now());
         let is_new = matches!(event, DiscoveryEvent::Discovered { .. });
         if let Some(event_tx) = &self.event_tx {
@@ -259,7 +302,11 @@ impl DiscoveryHandle {
         port: u16,
         protocol: ProtocolType,
     ) -> Result<Option<StatefulDevice>, ClientError> {
-        let client = self.state.unpinned_client()?;
+        let client = if is_overlay_host(host) {
+            self.state.unpinned_client_with(self.state.overlay_timeout())?
+        } else {
+            self.state.unpinned_client()?
+        };
         self.state.probe(&client, host, port, protocol).await
     }
 
@@ -274,11 +321,22 @@ impl DiscoveryHandle {
         channels: Vec<HttpChannel>,
     ) -> Result<Vec<StatefulDevice>, ClientError> {
         let client = self.state.unpinned_client()?;
+        // shareMe: overlay (Tailscale) channels wait longer, see OVERLAY_DISCOVERY_TIMEOUT
+        let overlay_client = if channels.iter().any(|c| is_overlay_host(&c.host)) {
+            Some(self.state.unpinned_client_with(self.state.overlay_timeout())?)
+        } else {
+            None
+        };
 
         let state = &self.state;
         let client = &client;
+        let overlay_client = overlay_client.as_ref();
         let found = futures_util::stream::iter(channels)
             .map(|channel| async move {
+                let client = match overlay_client {
+                    Some(overlay) if is_overlay_host(&channel.host) => overlay,
+                    _ => client,
+                };
                 state
                     .probe(client, &channel.host, channel.port, channel.protocol)
                     .await
@@ -298,9 +356,17 @@ impl DiscoveryHandle {
     /// falls back to scanning the `/24` subnets of the local interface
     /// addresses `interface_ips`, for networks that do not carry multicast.
     ///
-    /// The fallback only runs when nothing was confirmed until `grace` after
-    /// the known channels have been probed: any confirmation — a new device
-    /// or a known one — proves that the cheap stages work on this network.
+    /// The fallback only runs when nothing was confirmed over the local
+    /// network until `grace` after the known channels have been probed: any
+    /// such confirmation — a new device or a known one — proves that the cheap
+    /// stages work on this network.
+    ///
+    /// shareMe: a confirmation over an overlay (Tailscale) address proves
+    /// nothing about the local network, so it does not stop the fallback. A
+    /// paired device that changed networks since pairing is first found over
+    /// Tailscale only (its stored LAN address is stale); skipping the scan
+    /// then kept two devices on the same Wi-Fi talking over Tailscale, at a
+    /// fraction of the LAN speed (measured 2026-11-14).
     ///
     /// The found devices are put into the store (and emitted) as they answer;
     /// returns once every stage has finished, including the whole
@@ -313,12 +379,12 @@ impl DiscoveryHandle {
         protocol: ProtocolType,
         grace: Duration,
     ) -> Result<(), ClientError> {
-        let confirmations = self.state.confirmations.load(Ordering::Relaxed);
+        let confirmations = self.state.local_confirmations.load(Ordering::Relaxed);
         let escalate = async {
             self.discover_known_http_channels(known_channels).await?;
             tokio::time::sleep(grace).await;
 
-            if self.state.confirmations.load(Ordering::Relaxed) == confirmations {
+            if self.state.local_confirmations.load(Ordering::Relaxed) == confirmations {
                 futures_util::future::try_join_all(
                     interface_ips
                         .into_iter()
@@ -464,7 +530,7 @@ pub async fn start(config: DiscoveryConfig, stop_rx: oneshot::Receiver<()>) -> D
         event_tx: config.event_tx,
         answering: AtomicBool::new(true),
         scanning: std::sync::Mutex::new(HashSet::new()),
-        confirmations: AtomicU64::new(0),
+        local_confirmations: AtomicU64::new(0),
     });
 
     // Ends once discovery is stopped: the multicast side then drops its
@@ -585,5 +651,66 @@ fn confirmed_device(
             protocol,
         }),
         download: response.download,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overlay_hosts_are_the_cgnat_range() {
+        assert!(is_overlay_host("100.64.0.1"));
+        assert!(is_overlay_host("100.90.10.20"));
+        assert!(is_overlay_host("100.110.20.30"));
+        assert!(is_overlay_host("100.127.255.254"));
+
+        assert!(!is_overlay_host("100.63.255.255"));
+        assert!(!is_overlay_host("100.128.0.1"));
+        assert!(!is_overlay_host("192.168.9.130"));
+        assert!(!is_overlay_host("10.73.96.188"));
+        assert!(!is_overlay_host("example.local"));
+    }
+
+    #[test]
+    fn overlay_hosts_include_tailscale_ipv6() {
+        assert!(is_overlay_host("fd7a:115c:a1e0::3236:670b"));
+        assert!(is_overlay_host("fd7a:115c:a1e0::1c36:b568"));
+
+        assert!(!is_overlay_host("fd7a:115c:a1e1::1"));
+        assert!(!is_overlay_host("fd00::1"));
+        assert!(!is_overlay_host("fe80::1%11"));
+        assert!(!is_overlay_host("2401:3c00::1"));
+    }
+
+    fn device_at(host: &str) -> DiscoveredDevice {
+        DiscoveredDevice {
+            alias: "Peer".to_string(),
+            version: "2.1".to_string(),
+            device_model: None,
+            device_type: None,
+            fingerprint: "peer".to_string(),
+            channel: DeviceChannel::Http(HttpChannel {
+                host: host.to_string(),
+                port: 53317,
+                protocol: ProtocolType::Https,
+            }),
+            download: false,
+        }
+    }
+
+    #[test]
+    fn only_lan_confirmations_count_as_local() {
+        assert!(is_local_confirmation(&device_at("192.168.0.10")));
+        assert!(is_local_confirmation(&device_at("10.0.0.5")));
+        assert!(is_local_confirmation(&device_at("fe80::1%11")));
+
+        assert!(!is_local_confirmation(&device_at("100.110.20.30")));
+        assert!(!is_local_confirmation(&device_at("fd7a:115c:a1e0::1c36:b568")));
+    }
+
+    #[test]
+    fn overlay_timeout_is_longer_than_the_lan_one() {
+        assert!(OVERLAY_DISCOVERY_TIMEOUT > DEFAULT_DISCOVERY_TIMEOUT);
     }
 }

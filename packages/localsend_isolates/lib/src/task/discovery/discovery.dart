@@ -27,6 +27,9 @@ class DiscoveryService {
   Completer<void> _retryCompleter = Completer();
   bool _listening = false;
 
+  /// shareMe: completes once [_discovery] is running; replaced when it stops.
+  Completer<void> _running = Completer();
+
   /// Whether the current discovery was stopped by [restartListener], as
   /// opposed to stopping itself because the multicast sockets failed.
   bool _restartRequested = false;
@@ -95,6 +98,7 @@ class DiscoveryService {
       }
 
       _discovery = discovery;
+      if (!_running.isCompleted) _running.complete();
 
       // Tell everyone in the network that I am online.
       unawaited(discovery.announce());
@@ -106,6 +110,7 @@ class DiscoveryService {
       }
 
       _discovery = null;
+      _running = Completer();
 
       if (_restartRequested) {
         // The stream ended because [restartListener] stopped the discovery.
@@ -132,6 +137,24 @@ class DiscoveryService {
       // Starting failed previously; let [startListener] try again.
       _retryCompleter.complete();
     }
+  }
+
+  /// shareMe: waits up to [timeout] for the discovery to start; returns it, or
+  /// `null` when it did not start in time.
+  ///
+  /// The app's first scan can arrive before the listener has started: postInit
+  /// starts it only after the server, while the transfer tab scans right away.
+  /// Skipping that scan went unnoticed on the LAN, where the start announcement
+  /// finds the peers anyway, but peers reachable only via Tailscale were not
+  /// found until a manual refresh (measured 2026-11-13).
+  Future<RsDiscovery?> _waitUntilRunning(Duration timeout) async {
+    _logger.info('Discovery is not running yet, waiting for it to start');
+    try {
+      await _running.future.timeout(timeout);
+    } on TimeoutException {
+      return null;
+    }
+    return _discovery;
   }
 
   /// Sends an announcement which triggers a response on every LocalSend member of the network.
@@ -177,7 +200,7 @@ class DiscoveryService {
     required bool https,
     required Duration grace,
   }) async {
-    final discovery = _discovery;
+    final discovery = _discovery ?? await _waitUntilRunning(const Duration(seconds: 10));
     if (discovery == null) {
       _logger.info('Discovery is not running, skipping staged discovery');
       return;

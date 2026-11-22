@@ -1,0 +1,8 @@
+/* shareMe: Chinese texts for Info.plist keys, copied into Shuttle.app/Contents/Resources by
+   .github/workflows/shareme_macos.yml (not part of the Xcode project). English stays in Info.plist. */
+"CFBundleDisplayName" = "Shuttle";
+"NSLocalNetworkUsageDescription" = "Shuttle 需要用本地网络找到你的手机和电脑，并和它们互传文件。";
+"NSPhotoLibraryUsageDescription" = "选择要发送的照片和视频时需要访问照片图库。";
+"NSPhotoLibraryAddUsageDescription" = "把收到的照片和视频存进照片图库。";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "需要读取本机在局域网里的地址，才能和别的设备通信。";
+"NSLocationWhenInUseUsageDescription" = "需要读取本机在局域网里的地址，才能和别的设备通信。";

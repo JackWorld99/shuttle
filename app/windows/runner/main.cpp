@@ -36,8 +36,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(500, 600);
-  if (!window.Create(L"LocalSend", origin, size)) {
+  Win32Window::Size size(1100, 720);  // Shuttle: wide enough for the three-column layout on first launch
+  // Shuttle: window title (the name shown in the taskbar and in Alt+Tab)
+  if (!window.Create(L"Shuttle", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

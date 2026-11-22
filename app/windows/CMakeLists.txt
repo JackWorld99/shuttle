@@ -4,7 +4,9 @@ project(localsend_app LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "localsend_app")
+# Shuttle: the exe is Shuttle.exe (the name shown in Task Manager and Explorer). The external manifest file must
+# have the matching name: windows/Shuttle.exe.manifest
+set(BINARY_NAME "Shuttle")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

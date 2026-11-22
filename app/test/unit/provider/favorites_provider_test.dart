@@ -14,15 +14,17 @@ void main() {
   });
 
   test('Should add a favorite device', () async {
+    final favorites = FavoritesService(persistenceService);
     final service = ReduxNotifier.test(
-      redux: FavoritesService(persistenceService),
+      redux: favorites,
     );
 
     expect(service.state, []);
 
     final device = _createDevice('1');
 
-    await service.dispatchAsync(AddFavoriteAction(device));
+    service.dispatch(AddFavoriteAction(device));
+    await favorites.flushSave();
 
     expect(service.state, [device]);
     verify(persistenceService.setFavorites([device]));
@@ -30,8 +32,9 @@ void main() {
 
   test('Should update a favorite device', () async {
     final initialDevice = _createDevice('1', alias: 'A');
+    final favorites = FavoritesService(persistenceService);
     final service = ReduxNotifier.test(
-      redux: FavoritesService(persistenceService),
+      redux: favorites,
       initialState: [initialDevice],
     );
 
@@ -40,7 +43,8 @@ void main() {
     expect(service.state.first.alias, 'A');
 
     final updatedDevice = _createDevice('1', alias: 'B');
-    await service.dispatchAsync(UpdateFavoriteAction(updatedDevice));
+    service.dispatch(UpdateFavoriteAction(updatedDevice));
+    await favorites.flushSave();
 
     expect(service.state, [updatedDevice]);
     expect(service.state.first.alias, 'B');
@@ -49,8 +53,9 @@ void main() {
 
   test('Should not update a favorite device if unknown id', () async {
     final initialDevice = _createDevice('1', alias: 'A');
+    final favorites = FavoritesService(persistenceService);
     final service = ReduxNotifier.test(
-      redux: FavoritesService(persistenceService),
+      redux: favorites,
       initialState: [initialDevice],
     );
 
@@ -59,7 +64,8 @@ void main() {
     expect(service.state.first.alias, 'A');
 
     final updatedDevice = _createDevice('2', alias: 'B');
-    await service.dispatchAsync(UpdateFavoriteAction(updatedDevice));
+    service.dispatch(UpdateFavoriteAction(updatedDevice));
+    await favorites.flushSave();
 
     expect(service.state, [initialDevice]);
     expect(service.state.first.alias, 'A');
@@ -68,15 +74,17 @@ void main() {
 
   test('Should delete favorite device', () async {
     final initialDevice = _createDevice('1', fingerprint: '111');
+    final favorites = FavoritesService(persistenceService);
     final service = ReduxNotifier.test(
-      redux: FavoritesService(persistenceService),
+      redux: favorites,
       initialState: [initialDevice],
     );
 
     // Sanity check
     expect(service.state, [initialDevice]);
 
-    await service.dispatchAsync(RemoveFavoriteAction(deviceFingerprint: '111'));
+    service.dispatch(RemoveFavoriteAction(deviceFingerprint: '111'));
+    await favorites.flushSave();
 
     expect(service.state, []);
     verify(persistenceService.setFavorites([]));
@@ -84,15 +92,17 @@ void main() {
 
   test('Should not delete favorite device if unknown fingerprint', () async {
     final initialDevice = _createDevice('1', fingerprint: '111');
+    final favorites = FavoritesService(persistenceService);
     final service = ReduxNotifier.test(
-      redux: FavoritesService(persistenceService),
+      redux: favorites,
       initialState: [initialDevice],
     );
 
     // Sanity check
     expect(service.state, [initialDevice]);
 
-    await service.dispatchAsync(RemoveFavoriteAction(deviceFingerprint: '222'));
+    service.dispatch(RemoveFavoriteAction(deviceFingerprint: '222'));
+    await favorites.flushSave();
 
     expect(service.state, [initialDevice]);
     verifyNever(persistenceService.setFavorites(any));

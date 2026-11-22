@@ -10,32 +10,56 @@ import 'package:path/path.dart' as p;
 
 final _logger = Logger('FileSaver');
 
+/// From this Android version (10, API 29) on, gallery files are written
+/// straight into a gallery entry instead of a cache file.
+const _androidGalleryInPlaceSdk = 29;
+
+/// How a [FileSaveTarget] gets to its final place once it has been written.
+enum FileSaveKind {
+  /// Written to the destination directory (a path or an Android SAF document).
+  destination,
+
+  /// Written to the cache directory and moved into the gallery afterwards
+  /// (iOS, Android 9 and older), see [saveCachedFileToGallery].
+  galleryCache,
+
+  /// Written straight into a pending gallery entry (Android 10+), hidden from
+  /// the gallery until [completeFileSaveTarget] publishes it.
+  gallery,
+}
+
 /// Where an incoming file should be written to.
 /// The actual writing is done by the Rust server which receives either a
-/// plain file [path] or a writable [fileDescriptor] (Android SAF).
+/// plain file [path] or a writable [fileDescriptor] (Android SAF or gallery).
 class FileSaveTarget {
   /// The path to write the file to. `null` when [fileDescriptor] is used.
   final String? path;
 
-  /// A writable file descriptor (Android SAF). `null` when [path] is used.
+  /// A writable file descriptor (Android SAF or gallery entry).
+  /// `null` when [path] is used.
   final int? fileDescriptor;
 
   /// The path or content URI of the destination, used for the history
   /// and to locate the file after it has been written.
   final String displayPath;
 
+  final FileSaveKind kind;
+
   FileSaveTarget({
     required this.path,
     required this.fileDescriptor,
     required this.displayPath,
+    this.kind = FileSaveKind.destination,
   });
 }
 
 /// Prepares the destination for an incoming file with [fileName].
 ///
-/// When [saveToGallery] is true, the file is first written to the
-/// [cacheDirectory]; call [saveCachedFileToGallery] after the file has been
-/// written.
+/// When [saveToGallery] is true, an image ([isImage]) or video goes to the
+/// gallery: on Android 10+ it is written straight into a pending gallery entry,
+/// elsewhere it is first written to the [cacheDirectory]. Either way, call
+/// [completeFileSaveTarget] after the file has been written. When the gallery
+/// does not take the file, it is saved to the [destinationDirectory] instead.
 ///
 /// On Android, destinations that cannot be written directly (SAF content URIs
 /// and SD cards) are created via the Storage Access Framework and a writable
@@ -45,10 +69,21 @@ Future<FileSaveTarget> prepareFileSaveTarget({
   required String cacheDirectory,
   required String fileName,
   required bool saveToGallery,
+  required bool isImage,
   required Set<String> createdDirectories,
   int? androidSdkInt,
 }) async {
-  final parentDirectory = saveToGallery ? cacheDirectory : destinationDirectory;
+  var toGallery = saveToGallery;
+  if (toGallery && androidSdkInt != null && androidSdkInt >= _androidGalleryInPlaceSdk) {
+    final galleryEntry = await _createGalleryEntry(fileName: fileName, isImage: isImage);
+    if (galleryEntry != null) {
+      return galleryEntry;
+    }
+    // The same place a file goes when the gallery rejects it after it has been received.
+    toGallery = false;
+  }
+
+  final parentDirectory = toGallery ? cacheDirectory : destinationDirectory;
 
   final (destinationPath, documentUri, finalName) = await digestFilePathAndPrepareDirectory(
     parentDirectory: parentDirectory,
@@ -56,8 +91,17 @@ Future<FileSaveTarget> prepareFileSaveTarget({
     createdDirectories: createdDirectories,
   );
 
-  // When saveToGallery is enabled, the cache directory is used so SAF is not needed
-  if (!saveToGallery && androidSdkInt != null) {
+  if (toGallery) {
+    return FileSaveTarget(
+      path: destinationPath,
+      fileDescriptor: null,
+      displayPath: destinationPath,
+      kind: FileSaveKind.galleryCache,
+    );
+  }
+
+  // Only the destination directory can need SAF; gallery files were handled above.
+  if (androidSdkInt != null) {
     String? parentUri;
     if (documentUri != null || destinationPath.startsWith('content://')) {
       parentUri = documentUri ?? destinationPath;
@@ -103,13 +147,89 @@ Future<FileSaveTarget> reopenFileSaveTarget(FileSaveTarget target) async {
   }
 
   // The descriptor of the previous attempt was consumed by it, so the SAF
-  // document has to be opened again.
+  // document (or gallery entry) has to be opened again.
   _logger.info('Reopening ${target.displayPath}');
   return FileSaveTarget(
     path: null,
     fileDescriptor: await android_channel.openFileForWritingAndroid(uri: target.displayPath),
     displayPath: target.displayPath,
+    kind: target.kind,
   );
+}
+
+/// Creates a pending gallery entry for [fileName] (Android 10+).
+/// Returns `null` when the gallery does not take the file.
+Future<FileSaveTarget?> _createGalleryEntry({required String fileName, required bool isImage}) async {
+  // Gallery saves are only offered for names without a directory, see the receive controller.
+  final name = sanitizeRelativeName(fileName).last;
+  try {
+    final created = await android_channel.createMediaStoreFileAndroid(fileName: name, isImage: isImage);
+    _logger.info('Writing $name straight into the gallery as ${created.uri}');
+    return FileSaveTarget(
+      path: null,
+      fileDescriptor: created.fileDescriptor,
+      displayPath: created.uri,
+      kind: FileSaveKind.gallery,
+    );
+  } catch (e) {
+    _logger.warning('Could not create a gallery entry for $name, saving it to the destination directory', e);
+    return null;
+  }
+}
+
+/// Finishes [target] after the file has been written to it completely:
+/// publishes a gallery entry, moves a cache file into the gallery or lets
+/// Android scan a file in the destination directory.
+///
+/// Returns (savedToGallery, filePath) like [saveCachedFileToGallery]:
+/// filePath is `null` for a file in the gallery.
+Future<(bool, String?)> completeFileSaveTarget({
+  required FileSaveTarget target,
+  required String destinationDirectory,
+  required String fileName,
+  required bool isImage,
+  required Set<String> createdDirectories,
+}) async {
+  switch (target.kind) {
+    case FileSaveKind.gallery:
+      await android_channel.finishMediaStoreFileAndroid(uri: target.displayPath);
+      return (true, null);
+    case FileSaveKind.galleryCache:
+      return saveCachedFileToGallery(
+        cachedPath: target.displayPath,
+        destinationDirectory: destinationDirectory,
+        fileName: fileName,
+        isImage: isImage,
+        createdDirectories: createdDirectories,
+      );
+    case FileSaveKind.destination:
+      final path = target.path;
+      if (Platform.isAndroid && path != null) {
+        // Scan before reporting success so Android can handle the saved file correctly
+        // when it is moved to Trash, allowing another file with the same name.
+        // https://github.com/localsend/localsend/issues/2007
+        await android_channel.scanFileAndroid(path: path);
+      }
+      return (false, target.displayPath);
+  }
+}
+
+/// Cleans up after an attempt to write [target] failed or was canceled.
+///
+/// A gallery entry is deleted: it holds only part of the file, and it is
+/// hidden while pending, so it would only take up space. Another attempt at
+/// the same file needs a new target from [prepareFileSaveTarget].
+/// Other targets keep the incomplete file, which another attempt overwrites.
+Future<void> discardFileSaveTarget(FileSaveTarget target) async {
+  if (target.kind != FileSaveKind.gallery) {
+    return;
+  }
+  try {
+    await android_channel.deleteMediaStoreFileAndroid(uri: target.displayPath);
+  } catch (e) {
+    // Left pending; deleted on the next app start.
+    _logger.warning('Could not delete the incomplete gallery entry ${target.displayPath}', e);
+  }
 }
 
 /// Moves a file that has been written to the cache directory into the

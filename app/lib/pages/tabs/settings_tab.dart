@@ -3,14 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/color_mode.dart';
-import 'package:localsend_app/pages/about/about_page.dart';
-import 'package:localsend_app/pages/changelog_page.dart';
-import 'package:localsend_app/pages/donation/donation_page.dart';
 import 'package:localsend_app/pages/settings/network_interfaces_page.dart';
 import 'package:localsend_app/pages/tabs/settings_tab_controller.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
-import 'package:localsend_app/provider/version_provider.dart';
 import 'package:localsend_app/util/alias_generator.dart';
 import 'package:localsend_app/util/device_type_ext.dart';
 import 'package:localsend_app/util/i18n.dart';
@@ -26,13 +22,11 @@ import 'package:localsend_app/widget/dialogs/quick_save_notice.dart';
 import 'package:localsend_app/widget/dialogs/text_field_tv.dart';
 import 'package:localsend_app/widget/dialogs/text_field_with_actions.dart';
 import 'package:localsend_app/widget/labeled_checkbox.dart';
-import 'package:localsend_app/widget/local_send_logo.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
 import 'package:localsend_isolates/constants.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class SettingsTab extends StatelessWidget {
   const SettingsTab();
@@ -527,47 +521,10 @@ class SettingsTab extends StatelessWidget {
                 ),
               ],
             ),
-            _SettingsSection(
-              title: t.settingsTab.other.title,
-              padding: const EdgeInsets.only(bottom: 0),
-              children: [
-                _ButtonEntry(
-                  label: t.aboutPage.title,
-                  buttonLabel: t.general.open,
-                  onTap: () async {
-                    await context.push(() => const AboutPage());
-                  },
-                ),
-                _ButtonEntry(
-                  label: t.settingsTab.other.support,
-                  buttonLabel: t.settingsTab.other.donate,
-                  onTap: () async {
-                    await context.push(() => const DonationPage());
-                  },
-                ),
-                _ButtonEntry(
-                  label: t.settingsTab.other.privacyPolicy,
-                  buttonLabel: t.general.open,
-                  onTap: () async {
-                    await launchUrl(
-                      Uri.parse('https://localsend.org/privacy'),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  },
-                ),
-                if (checkPlatform([TargetPlatform.iOS, TargetPlatform.macOS]))
-                  _ButtonEntry(
-                    label: t.settingsTab.other.termsOfUse,
-                    buttonLabel: t.general.open,
-                    onTap: () async {
-                      await launchUrl(
-                        Uri.parse('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/'),
-                        mode: LaunchMode.externalApplication,
-                      );
-                    },
-                  ),
-              ],
-            ),
+            // Shuttle: LocalSend's own "About / Donate / Privacy policy / Terms of use" entries used to be here, with LocalSend's
+            // logo, version, copyright and changelog below them. They all point to LocalSend's website, so Shuttle drops them.
+            // Version, update check and open-source licenses are under "More" in Shuttle's main settings; LocalSend's
+            // attribution and license are on the "Open-source licenses" page.
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -582,34 +539,6 @@ class SettingsTab extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
               ],
-            ),
-            const SizedBox(height: 20),
-            const LocalSendLogo(withText: true),
-            const SizedBox(height: 5),
-            ref
-                .watch(versionProvider)
-                .maybeWhen(
-                  data: (version) => Text(
-                    'Version: ${version.combinedString}',
-                    textAlign: TextAlign.center,
-                  ),
-                  orElse: () => Container(),
-                ),
-            Text(
-              '© ${DateTime.now().year} Tien Do Nam',
-              textAlign: TextAlign.center,
-            ),
-            Center(
-              child: TextButton.icon(
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.onSurface,
-                ),
-                onPressed: () async {
-                  await context.push(() => const ChangelogPage());
-                },
-                icon: const Icon(Icons.history),
-                label: Text(t.changelogPage.title),
-              ),
             ),
             const SizedBox(height: 80),
           ],
@@ -743,18 +672,16 @@ class _ButtonEntry extends StatelessWidget {
 class _SettingsSection extends StatelessWidget {
   final String title;
   final List<Widget> children;
-  final EdgeInsets padding;
 
   const _SettingsSection({
     required this.title,
     required this.children,
-    this.padding = const EdgeInsets.only(bottom: 15),
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: padding,
+      padding: const EdgeInsets.only(bottom: 15),
       child: Card(
         child: Padding(
           padding: const EdgeInsets.only(left: 15, right: 15, top: 15),

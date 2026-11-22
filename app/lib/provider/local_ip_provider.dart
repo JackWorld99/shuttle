@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -20,6 +21,14 @@ final localIpProvider = ReduxProvider<LocalIpService, NetworkState>((ref) {
 });
 
 StreamSubscription? _subscription;
+
+/// Shuttle: whether the local addresses really changed (Wi-Fi ↔ mobile data, Tailscale connecting or disconnecting). If so, the
+/// old device list should be cleared and a new scan started; otherwise, after the phone switches to mobile data, "my devices"
+/// still show as being on the same Wi-Fi (direct). Only the address sets are compared (order ignored); the first addresses after
+/// app start don't count, since startup scans anyway.
+bool localIpsChanged(NetworkState prev, NetworkState next) {
+  return prev.initialized && !const SetEquality<String>().equals(prev.localIps.toSet(), next.localIps.toSet());
+}
 
 class LocalIpService extends ReduxNotifier<NetworkState> {
   final SettingsService _settingsService;
@@ -69,17 +78,19 @@ class InitLocalIpAction extends ReduxAction<LocalIpService, NetworkState> {
 class FetchLocalIpAction extends AsyncReduxAction<LocalIpService, NetworkState> {
   @override
   Future<NetworkState> reduce() async {
+    final result = await _getIp(
+      whitelist: notifier._settingsService.state.networkWhitelist,
+      blacklist: notifier._settingsService.state.networkBlacklist,
+    );
     return NetworkState(
-      localIps: await _getIp(
-        whitelist: notifier._settingsService.state.networkWhitelist,
-        blacklist: notifier._settingsService.state.networkBlacklist,
-      ),
+      localIps: result.ips,
+      interfaceNames: result.interfaceNames,
       initialized: true,
     );
   }
 }
 
-Future<List<String>> _getIp({
+Future<({List<String> ips, Map<String, String> interfaceNames})> _getIp({
   required List<String>? whitelist,
   required List<String>? blacklist,
 }) async {
@@ -91,19 +102,31 @@ Future<List<String>> _getIp({
     _logger.warning('Failed to get wifi IP', e);
   }
 
-  final nativeResult =
-      (await getNetworkInterfaces(
-            whitelist: whitelist,
-            blacklist: blacklist,
-          ))
-          .map((interface) => interface.addresses.map((a) => a.address).toList())
-          .expand((ip) => ip)
-          .where((ip) => !ip.contains(':')) // ignore IPv6 for now
-          .toList();
+  final interfaces = await getNetworkInterfaces(
+    whitelist: whitelist,
+    blacklist: blacklist,
+  );
+  final nativeResult = interfaces
+      .map((interface) => interface.addresses.map((a) => a.address).toList())
+      .expand((ip) => ip)
+      .where((ip) => !ip.contains(':')) // ignore IPv6 for now
+      .toList();
+  final interfaceNames = ipv4InterfaceNames(interfaces);
 
   final addresses = rankIpAddresses(nativeResult, ip);
-  _logger.info('Network state: $addresses');
-  return addresses;
+  _logger.info('Network state: ${[for (final a in addresses) interfaceNames[a] == null ? a : '$a (${interfaceNames[a]})']}');
+  return (ips: addresses, interfaceNames: interfaceNames);
+}
+
+/// Shuttle: the network interface of each IPv4 address (Android: wlan0 / rmnet_data0 / tun0 …, Windows: Wi-Fi / Tailscale …).
+/// Pairing uses it to drop addresses the peer can't reach, such as the mobile-data interface (pairAddresses), instead of guessing
+/// Tailscale from the address range alone.
+Map<String, String> ipv4InterfaceNames(Iterable<NetworkInterface> interfaces) {
+  return {
+    for (final interface in interfaces)
+      for (final a in interface.addresses)
+        if (a.type == InternetAddressType.IPv4) a.address: interface.name,
+  };
 }
 
 List<String> rankIpAddresses(List<String> nativeResult, String? thirdPartyResult) {

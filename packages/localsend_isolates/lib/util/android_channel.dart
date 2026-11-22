@@ -103,6 +103,60 @@ Future<CreatedFileAndroid> createFileAndroid({
   );
 }
 
+/// Creates a pending image ([isImage]) or video entry in the gallery
+/// (Android 10+) and opens it for writing.
+///
+/// The entry stays hidden from the gallery and other apps until
+/// [finishMediaStoreFileAndroid] publishes it; [deleteMediaStoreFileAndroid]
+/// removes it after a failed transfer. Images go to Pictures/, videos to Movies/.
+/// The returned name may carry a number when [fileName] is taken.
+///
+/// Throws a [PlatformException] with the code `UNSUPPORTED_FORMAT` when the
+/// gallery would not take the file (its extension is not one of an image or
+/// video).
+Future<CreatedFileAndroid> createMediaStoreFileAndroid({
+  required String fileName,
+  required bool isImage,
+}) async {
+  final result = await _methodChannel.invokeMethod<Map>('createMediaStoreFile', {
+    'fileName': fileName,
+    'isImage': isImage,
+  });
+  if (result == null) {
+    throw StateError('Android could not create a gallery entry for $fileName');
+  }
+  return CreatedFileAndroid(
+    uri: result['uri'] as String,
+    fileDescriptor: result['fd'] as int,
+  );
+}
+
+/// Publishes a completely written gallery entry created by
+/// [createMediaStoreFileAndroid], so it shows up in the gallery.
+Future<void> finishMediaStoreFileAndroid({required String uri}) async {
+  await _methodChannel.invokeMethod<void>('finishMediaStoreFile', {
+    'uri': uri,
+  });
+}
+
+/// Deletes a gallery entry created by [createMediaStoreFileAndroid],
+/// e.g. because the transfer failed or was canceled.
+Future<void> deleteMediaStoreFileAndroid({required String uri}) async {
+  await _methodChannel.invokeMethod<bool>('deleteMediaStoreFile', {
+    'uri': uri,
+  });
+}
+
+/// Deletes the gallery entries of [createMediaStoreFileAndroid] that were
+/// created before [createdBefore] and never published: files that were still
+/// being received when the app was closed. Returns how many were deleted.
+Future<int> deletePendingMediaStoreFilesAndroid({required DateTime createdBefore}) async {
+  final deleted = await _methodChannel.invokeMethod<int>('deletePendingMediaStoreFiles', {
+    'createdBefore': createdBefore.millisecondsSinceEpoch ~/ 1000,
+  });
+  return deleted ?? 0;
+}
+
 /// Opens an existing document created by [createFileAndroid] for writing and
 /// discards its current content.
 ///

@@ -1,6 +1,7 @@
 pub mod common;
 mod connection_limit;
 pub mod internal;
+mod local_network;
 mod peer_ip;
 pub mod v2;
 pub mod v3;
@@ -22,6 +23,7 @@ use connection_limit::{ConnectionLimiter, LimitReached, MAX_CONNECTIONS, MAX_CON
 use hyper::body::Incoming;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
+use local_network::LocalNetworkGuard;
 use lru::LruCache;
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
@@ -90,6 +92,10 @@ pub struct AppState {
 
     /// Limits the connections being served, shared by the IPv4 and IPv6 listeners.
     connection_limiter: Arc<ConnectionLimiter>,
+
+    /// shareMe: decides which connections are served by the local address
+    /// they arrived at, shared by the IPv4 and IPv6 listeners.
+    local_network: Arc<LocalNetworkGuard>,
 }
 
 impl AppState {
@@ -123,6 +129,7 @@ impl AppState {
             ))),
             v2,
             connection_limiter: ConnectionLimiter::new(MAX_CONNECTIONS, MAX_CONNECTIONS_PER_IP),
+            local_network: Arc::new(LocalNetworkGuard::new()),
         }
     }
 }
@@ -159,6 +166,9 @@ impl ServerHandle {
     /// Link-local IPv6 addresses are skipped: peers can only use them together
     /// with their own scope, which this device cannot know.
     ///
+    /// shareMe: so are the addresses on which connections are refused (public
+    /// IPv6, mobile data, VPNs other than Tailscale), see `local_network`.
+    ///
     /// Empty when the interfaces cannot be enumerated.
     pub fn local_addresses(&self) -> Vec<SocketAddr> {
         let Ok(interfaces) = if_addrs::get_if_addrs() else {
@@ -167,6 +177,9 @@ impl ServerHandle {
         let mut addresses: Vec<SocketAddr> = interfaces
             .into_iter()
             .filter(|interface| !interface.is_loopback())
+            .filter(|interface| {
+                local_network::decide(interface.ip(), std::slice::from_ref(&interface.name)).is_ok()
+            })
             .filter_map(|interface| match interface.ip() {
                 IpAddr::V4(address) => Some(SocketAddr::new(address.into(), self.port)),
                 IpAddr::V6(address) if self.ipv6_bound && !address.is_unicast_link_local() => {
@@ -474,7 +487,13 @@ async fn start_server_with_listener(
         let cancel = cancel.clone();
         connections.spawn(async move {
             let _permit = permit;
-            let serve = serve_connection(tcp_stream, remote_addr, tls_acceptor, app_state);
+            let serve = async move {
+                // shareMe: only connections over the local network or Tailscale are served.
+                if !arrived_over_local_network(&tcp_stream, remote_addr, &app_state).await {
+                    return;
+                }
+                serve_connection(tcp_stream, remote_addr, tls_acceptor, app_state).await
+            };
             tokio::select! {
                 _ = serve => {}
                 // Hard-drop the connection when the server is stopped.
@@ -482,6 +501,33 @@ async fn start_server_with_listener(
             }
         });
     }
+}
+
+/// shareMe: whether `tcp_stream` came in over the local network or Tailscale,
+/// judged by the local address it arrived at. Other connections are reset
+/// before anything is said on them.
+async fn arrived_over_local_network(
+    tcp_stream: &tokio::net::TcpStream,
+    remote_addr: SocketAddr,
+    app_state: &AppState,
+) -> bool {
+    let local_addr = match tcp_stream.local_addr() {
+        Ok(local_addr) => local_addr,
+        // The connection is gone already.
+        Err(err) => {
+            tracing::debug!("No local address for the connection from {remote_addr}: {err:#}");
+            return false;
+        }
+    };
+    let Err(refusal) = app_state.local_network.check(local_addr).await else {
+        return true;
+    };
+
+    // Debug only: the peer decides how often this happens.
+    tracing::debug!("Refusing connection from {remote_addr} to {local_addr}: {refusal}");
+    // A reset instead of a graceful close tells the peer right away.
+    let _ = socket2::SockRef::from(tcp_stream).set_linger(Some(std::time::Duration::ZERO));
+    false
 }
 
 async fn serve_connection(
@@ -689,5 +735,113 @@ async fn handle_request_inner(mut req: Request<Incoming>) -> Result<Response<Box
             *res.status_mut() = StatusCode::NOT_FOUND;
             Ok(res)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use local_network::InterfaceAddress;
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A non-loopback IPv4 address of this machine, which it can connect to itself.
+    fn own_ipv4() -> Option<Ipv4Addr> {
+        if_addrs::get_if_addrs()
+            .ok()?
+            .into_iter()
+            .find_map(|interface| match interface.ip() {
+                IpAddr::V4(ip) if !ip.is_loopback() && !ip.is_link_local() => Some(ip),
+                _ => None,
+            })
+    }
+
+    /// Serves on every IPv4 address, pretending that `ip` is an address of the
+    /// interface `interface`. Returns where to connect and the server's state.
+    async fn serve_pretending(ip: Ipv4Addr, interface: &str) -> (SocketAddr, AppState) {
+        let info = ClientInfo {
+            alias: "Test Server".to_string(),
+            version: "2.2".to_string(),
+            device_model: None,
+            device_type: None,
+            token: "server-fingerprint".to_string(),
+        };
+        let mut state = AppState::new(Arc::new(Mutex::new(info)), None, None, WebConfig::default());
+        let name = interface.to_string();
+        state.local_network = Arc::new(LocalNetworkGuard::with_sources(
+            move || {
+                Ok(vec![InterfaceAddress {
+                    name: name.clone(),
+                    ip: ip.into(),
+                    index: None,
+                }])
+            },
+            |_| None,
+        ));
+
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0))
+            .await
+            .unwrap();
+        let address = SocketAddr::new(ip.into(), listener.local_addr().unwrap().port());
+        tokio::spawn(start_server_with_listener(
+            listener,
+            None,
+            state.clone(),
+            CancellationToken::new(),
+            TaskTracker::new(),
+        ));
+        (address, state)
+    }
+
+    /// Sends a request and reads until the server closes the connection. A
+    /// reset counts as closed.
+    async fn request(address: SocketAddr) -> Vec<u8> {
+        let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+        // Fails when the server has reset the connection already.
+        let _ = stream
+            .write_all(b"GET /api/localsend/v2/info HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await;
+        let mut response = Vec::new();
+        tokio::time::timeout(Duration::from_secs(5), stream.read_to_end(&mut response))
+            .await
+            .expect("the server did not close the connection")
+            .ok();
+        response
+    }
+
+    #[tokio::test]
+    async fn connections_over_the_local_network_are_served() {
+        let Some(ip) = own_ipv4() else {
+            eprintln!("Skipped: this machine has no non-loopback IPv4 address");
+            return;
+        };
+        let (address, _state) = serve_pretending(ip, "wlan0").await;
+
+        let response = request(address).await;
+        assert!(
+            response.starts_with(b"HTTP/1.1 "),
+            "not served: {response:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn connections_over_mobile_data_are_reset_unanswered() {
+        let Some(ip) = own_ipv4() else {
+            eprintln!("Skipped: this machine has no non-loopback IPv4 address");
+            return;
+        };
+        let (address, state) = serve_pretending(ip, "rmnet_data0").await;
+
+        let response = request(address).await;
+        assert!(response.is_empty(), "answered: {response:?}");
+
+        // The refused connection gives its slot back.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while state.connection_limiter.total() != 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the refused connection kept its slot");
     }
 }

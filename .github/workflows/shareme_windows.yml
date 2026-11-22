@@ -1,0 +1,142 @@
+# Shuttle: Windows build in CI.
+#
+# Based on LocalSend's own build_windows_zip_x64.yml, with these changes:
+# - No Azure code signing (no certificate), so the exe is unsigned and Windows shows "Windows protected your PC"
+#   on first run.
+# - Builds automatically on pushes to the main branch that touch the app code; can also be started manually
+#   from the Actions page.
+# - The output is a "portable" zip: it contains an empty settings.json, which makes the app keep its settings
+#   in the program folder instead of AppData.
+# - Also builds the installer Shuttle-Setup-<version>.exe (Inno Setup, script
+#   support/scripts/shuttle_windows-inno.iss, modeled on upstream's build_windows_exe_unsigned.yml). For the
+#   version see "Version" below. The installer contains no settings.json: a fresh install keeps its settings in
+#   %APPDATA%\Shuttle; installed into a folder that already has a settings.json (e.g. an old portable copy), it
+#   keeps using that file.
+# - Version: version name = date of the latest commit, build number from support/scripts/shuttle_version.sh
+#   (based on the commit count), passed to Flutter at build time; the 1.18.2+64 in pubspec stays
+#   unchanged. Hence fetch-depth: 0 on checkout.
+# - The release workflow shareme_release.yml also calls this file (workflow_call) to build the installer.
+name: Shuttle Windows
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "packages/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/shareme_windows.yml"
+      - "support/scripts/shuttle_windows-inno.iss"
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      version:
+        description: "Version name, e.g. 2026.11.16"
+        value: ${{ jobs.build_windows_zip.outputs.version }}
+      build:
+        description: "Build number"
+        value: ${{ jobs.build_windows_zip.outputs.build }}
+
+# When called from the release workflow, github.workflow is that workflow's name, so a release build and a
+# push-triggered build do not cancel each other
+concurrency:
+  group: shareme-windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.47.9"
+
+jobs:
+  build_windows_zip:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.version.outputs.build }}
+
+    steps:
+      - name: Fix long file paths
+        run: git config --system core.longpaths true
+
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, pinned 2026-11-14
+        with:
+          fetch-depth: 0 # the build number counts commits
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: |
+          bash support/scripts/shuttle_version.sh | tee -a "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2, pinned 2026-11-14 (third-party)
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+
+      # Required by the CMake install step (app/windows/CMakeLists.txt installs localsend_msix_helper.msix)
+      - name: Build MSIX helper
+        run: |
+          $makepri = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\10.*\x64\makepri.exe' | Select-Object -Last 1
+          & $makepri.FullName new /pr support\build\msix\content /cf support\build\msix\priconfig.xml /mn support\build\msix\content\AppxManifest.xml /of support\build\msix\content\resources.pri /o
+          & 'C:\Program Files (x86)\Windows Kits\10\App Certification Kit\makeappx.exe' pack /o /d support\build\msix\content /nv /p app\windows\localsend_msix_helper.msix
+
+      - name: Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Compile for Windows
+        working-directory: app
+        run: flutter build windows --build-name=${{ steps.version.outputs.version }} --build-number=${{ steps.version.outputs.build }}
+
+      - name: Create empty settings.json (portable mode)
+        working-directory: app
+        run: echo {} > build/windows/x64/runner/Release/settings.json
+
+      - name: Add DLL files
+        working-directory: app
+        run: |
+          Copy-Item ../support/build/windows/x64/msvcp140.dll build/windows/x64/runner/Release/
+          Copy-Item ../support/build/windows/x64/vcruntime140.dll build/windows/x64/runner/Release/
+          Copy-Item ../support/build/windows/x64/vcruntime140_1.dll build/windows/x64/runner/Release/
+
+      - name: Remove MSIX helper from portable bundle
+        working-directory: app
+        run: |
+          Remove-Item build/windows/x64/runner/Release/localsend_msix_helper.msix
+          Remove-Item build/windows/x64/runner/Release/install_msix_helper.ps1
+          Remove-Item build/windows/x64/runner/Release/Shuttle.exe.manifest
+
+      - name: Zip compiled files
+        working-directory: app
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "Shuttle-windows-x86-64-${{ github.sha }}.zip"
+
+      - name: Upload zip
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, pinned 2026-11-14
+        with:
+          name: shuttle-windows-x86-64
+          path: app/Shuttle-windows-x86-64-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      # The installer takes only Shuttle.exe, *.dll and data\ (not the settings.json created above).
+      # windows-latest comes with Inno Setup 6 preinstalled.
+      - name: Compile installer (unsigned)
+        run: |
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' }
+          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\inno-result" | Out-Null
+          & $iscc "/DPayloadDir=${{ github.workspace }}\app\build\windows\x64\runner\Release" "/DResultDir=${{ runner.temp }}\inno-result" "/DMyAppVersion=${{ steps.version.outputs.version }}" support\scripts\shuttle_windows-inno.iss
+          if ($LASTEXITCODE -ne 0) { throw "iscc failed ($LASTEXITCODE)" }
+
+      - name: Upload installer
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, pinned 2026-11-14
+        with:
+          name: shuttle-setup-${{ steps.version.outputs.version }}
+          path: ${{ runner.temp }}\inno-result\Shuttle-Setup-${{ steps.version.outputs.version }}.exe
+          if-no-files-found: error
+          retention-days: 14

@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:localsend_app/config/shareme_theme.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
@@ -241,6 +242,39 @@ Future<void> _pickFolder(BuildContext context, Ref ref) async {
   }
 }
 
+/// Shuttle: theme for the media picker. wechat_assets_picker draws the selection marks and the "Confirm" button with
+/// colorScheme.secondary, which becomes the ink color here; backgrounds use Shuttle's bg / group.
+ThemeData _shareMePickerTheme(BuildContext context) {
+  final c = context.sm;
+  final light = Theme.of(context).brightness == Brightness.light;
+  final base = AssetPicker.themeData(c.ink, light: light);
+  return base.copyWith(
+    scaffoldBackgroundColor: c.bg,
+    canvasColor: c.group,
+    cardColor: c.bg,
+    primaryColor: c.bg,
+    appBarTheme: base.appBarTheme.copyWith(
+      backgroundColor: c.bg,
+      foregroundColor: c.ink,
+      iconTheme: IconThemeData(color: c.ink),
+    ),
+    bottomAppBarTheme: base.bottomAppBarTheme.copyWith(color: c.group),
+    iconTheme: base.iconTheme.copyWith(color: c.ink),
+    // The picker uses bodyLarge's color for the "Confirm" button text and the index numbers on selected cells, on a secondary (ink)
+    // background, so bodyLarge must be the light on-ink color; otherwise it is black text on black and unreadable
+    textTheme: base.textTheme.copyWith(bodyLarge: base.textTheme.bodyLarge?.copyWith(color: c.onInk)),
+    colorScheme: base.colorScheme.copyWith(
+      // primary is used for the 45% overlay on selected cells and the album dropdown arrow: ink darkens selected cells so the
+      // light index numbers stay readable
+      primary: c.ink,
+      secondary: c.ink,
+      onSecondary: c.onInk,
+      surface: c.bg,
+      onSurface: c.ink,
+    ),
+  );
+}
+
 Future<void> _pickMedia(BuildContext context, Ref ref) async {
   if (checkPlatform([TargetPlatform.android])) {
     await PhotoManager.requestPermissionExtend(
@@ -258,7 +292,13 @@ Future<void> _pickMedia(BuildContext context, Ref ref) async {
   final oldBrightness = Theme.of(context).brightness;
   final List<AssetEntity>? result = await AssetPicker.pickAssets(
     context,
-    pickerConfig: const AssetPickerConfig(maxAssets: 999, textDelegate: TranslatedAssetPickerTextDelegate()),
+    pickerConfig: AssetPickerConfig(
+      maxAssets: 999,
+      textDelegate: const TranslatedAssetPickerTextDelegate(),
+      // Shuttle: 4 columns, with Shuttle's ink and background colors
+      gridCount: 4,
+      pickerTheme: _shareMePickerTheme(context),
+    ),
   );
 
   WidgetsBinding.instance.addPostFrameCallback((_) async {

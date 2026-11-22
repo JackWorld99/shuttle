@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  shareMe (2026-11-21): nothing of Shuttle leaves the phone through Android backup or phone-to-phone migration.
+  The settings (shared_prefs/FlutterSharedPreferences.xml) hold this phone's private key (ls_security_context)
+  and the pairing keys of verified devices (shareme_paired_devices); a copy on another phone or in a cloud backup
+  would let it pass as this phone. A new phone starts as a new device and is paired again.
+
+  android:allowBackup="false" in AndroidManifest.xml already turns off cloud backup, but on Android 12+ it does
+  not turn off device-to-device transfer, hence the <device-transfer> rules below (used on Android 12+ only).
+  Android 11 and lower: allowBackup="false" turns off both.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </device-transfer>
+</data-extraction-rules>

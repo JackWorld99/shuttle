@@ -25,7 +25,9 @@ Future<void> setupStatusBar() async {
 }
 
 Future<void> removeExistingDestinationAccess() async {
-  await _methodChannel.invokeMethod('removeExistingDestinationAccess');
+  // Shuttle: upstream passed 'removeExistingDestinationAccess' here, but the Swift side (AppDelegate) only knows this name,
+  // so every call used to throw MissingPluginException.
+  await _methodChannel.invokeMethod('removeDestinationFolderAccess');
 }
 
 Future<void> persistDestinationFolderAccess(String path) async {

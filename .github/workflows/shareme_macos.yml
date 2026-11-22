@@ -1,0 +1,240 @@
+# Shuttle: macOS build in CI, without an Apple Developer account.
+#
+# Based on upstream's support/scripts/compile_mac_dmg.sh, with these changes:
+# - No Developer ID certificate: signing is disabled during the build and the app is signed ad-hoc ("-")
+#   afterwards; no notarization. macOS blocks the first launch; allow it under
+#   System Settings > Privacy & Security > Open Anyway.
+# - Apple silicon only (arm64, FLUTTER_MACOS_ARM64_ONLY), no Intel: halves both the Rust and the Dart build.
+# - The share extension ShareExtension.appex is removed: it hands files to the main app through an App Group,
+#   which requires a developer account.
+# - Signed with support/build/macos/Shuttle.entitlements: keeps the App Sandbox and the network, Downloads
+#   folder and user-selected file entitlements, drops the App Group. After signing, a check confirms that the
+#   sandbox is on (Flutter turns it off when flutter build runs with --ci; we don't pass it, so the check is
+#   only a safeguard).
+# - Chinese permission texts (local network etc.) go into Contents/Resources/zh-Hans.lproj
+#   (from support/build/macos/zh-Hans.lproj).
+# - Not built on every push:
+#   - Normally start it manually (Actions > Shuttle macOS > Run workflow).
+#   - A push to the shareme-macos branch (macOS development branch) builds once, to try the build before
+#     merging and to get a package to test on a Mac.
+# - Output: artifact shuttle-macos-arm64-<version>, containing Shuttle-<version>-macos-arm64.dmg.
+name: Shuttle macOS
+
+on:
+  push:
+    branches: [shareme-macos]
+  workflow_dispatch:
+
+concurrency:
+  group: shareme-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.47.9"
+
+jobs:
+  build_macos_dmg:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      FLUTTER_MACOS_ARM64_ONLY: "true"
+      # flutter_tools passes FLUTTER_XCODE_<NAME> to xcodebuild as <NAME>=...; signing happens in "Sign ad-hoc".
+      FLUTTER_XCODE_CODE_SIGNING_ALLOWED: "NO"
+      FLUTTER_XCODE_CODE_SIGNING_REQUIRED: "NO"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, pinned 2026-11-14
+
+      - name: Read version from pubspec.yaml
+        id: version
+        run: |
+          v=$(sed -n 's/^version: *\([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' app/pubspec.yaml | head -n 1)
+          if [ -z "$v" ]; then echo "No version: x.y.z found in app/pubspec.yaml"; exit 1; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Shuttle version: $v"
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2, pinned 2026-11-14 (third-party)
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+          pub-cache: true
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          uname -m
+          xcodebuild -version
+          rustup --version
+          pod --version
+
+      # Cargokit builds the Rust plugin with --target-dir = this Pods target's TARGET_TEMP_DIR.
+      # Restoring it skips recompiling the crates.io dependencies (most of the Rust time).
+      - name: Cache Rust build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6, pinned 2026-11-16
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            app/build/macos/Build/Intermediates.noindex/Pods.build/Release/rust_lib_localsend_app.build
+          key: shuttle-macos-rust-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            shuttle-macos-rust-${{ runner.arch }}-
+
+      - name: Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Compile for macOS
+        working-directory: app
+        run: flutter build macos --release
+
+      - name: Remove Share Extension
+        working-directory: app
+        run: |
+          APP=build/macos/Build/Products/Release/Shuttle.app
+          test -d "$APP" || { echo "$APP not found"; ls build/macos/Build/Products/Release; exit 1; }
+          rm -rf "$APP/Contents/PlugIns/ShareExtension.appex"
+          rmdir "$APP/Contents/PlugIns" 2>/dev/null || true
+
+      - name: Add Chinese Info.plist texts
+        working-directory: app
+        run: |
+          APP=build/macos/Build/Products/Release/Shuttle.app
+          for f in ../support/build/macos/zh-Hans.lproj/*.strings; do plutil -lint "$f"; done
+          mkdir -p "$APP/Contents/Resources/zh-Hans.lproj"
+          cp ../support/build/macos/zh-Hans.lproj/*.strings "$APP/Contents/Resources/zh-Hans.lproj/"
+
+      # Inside out: everything nested (frameworks, the login item helper) first, then the app with its entitlements.
+      # No --options runtime: the hardened runtime is only needed for notarization, and its library validation
+      # would reject frameworks that carry no team ID.
+      - name: Sign ad-hoc
+        working-directory: app
+        run: |
+          APP=build/macos/Build/Products/Release/Shuttle.app
+          HELPER="$APP/Contents/Library/LoginItems/LaunchAtLoginHelper.app"
+          codesign --force --deep --sign - "$APP"
+          if [ -d "$HELPER" ]; then
+            codesign --force --sign - --entitlements ../support/build/macos/LaunchAtLoginHelper.entitlements "$HELPER"
+          fi
+          codesign --force --sign - --entitlements ../support/build/macos/Shuttle.entitlements "$APP"
+
+      - name: Check the app
+        working-directory: app
+        run: |
+          APP=build/macos/Build/Products/Release/Shuttle.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dvv "$APP" 2>&1 | grep -E "^(Identifier|Format|Signature|TeamIdentifier|CodeDirectory)"
+          echo "--- entitlements"
+          codesign -d --entitlements - --xml "$APP" > "$RUNNER_TEMP/entitlements.plist"
+          plutil -p "$RUNNER_TEMP/entitlements.plist"
+          sandbox=$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.app-sandbox" "$RUNNER_TEMP/entitlements.plist")
+          if [ "$sandbox" != "true" ]; then echo "App Sandbox is not enabled ($sandbox)"; exit 1; fi
+          echo "--- Info.plist"
+          plutil -p "$APP/Contents/Info.plist" | grep -E '"(CFBundleIdentifier|CFBundleName|CFBundleDisplayName|CFBundleShortVersionString|CFBundleVersion|LSMinimumSystemVersion)"'
+          echo "--- architectures"
+          lipo -archs "$APP/Contents/MacOS/Shuttle"
+          test ! -e "$APP/Contents/PlugIns/ShareExtension.appex"
+          echo "--- Gatekeeper (expected: rejected, the app is not notarized)"
+          spctl --assess --type execute -vv "$APP" || true
+          du -sh "$APP"
+
+      - name: Create dmg
+        id: dmg
+        working-directory: app
+        run: |
+          APP=build/macos/Build/Products/Release/Shuttle.app
+          STAGE="$RUNNER_TEMP/dmg-root"
+          DMG="$RUNNER_TEMP/Shuttle-${{ steps.version.outputs.version }}-macos-arm64.dmg"
+          rm -rf "$STAGE"; mkdir -p "$STAGE"
+          ditto "$APP" "$STAGE/Shuttle.app"
+          ln -s /Applications "$STAGE/Applications"
+          # hdiutil sometimes fails on hosted runners with "Resource busy"; retry.
+          for i in 1 2 3; do
+            hdiutil create -volname "Shuttle" -srcfolder "$STAGE" -ov -fs HFS+ -format UDZO "$DMG" && break
+            echo "hdiutil create failed (attempt $i), retrying in 10 s"; sleep 10
+          done
+          test -f "$DMG"
+          MNT="$RUNNER_TEMP/dmg-check"
+          mkdir -p "$MNT"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$DMG"
+          codesign --verify --deep --strict "$MNT/Shuttle.app"
+          hdiutil detach "$MNT"
+          shasum -a 256 "$DMG"
+          ls -la "$DMG"
+          echo "path=$DMG" >> "$GITHUB_OUTPUT"
+
+      - name: Upload dmg
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, pinned 2026-11-14
+        with:
+          name: shuttle-macos-arm64-${{ steps.version.outputs.version }}
+          path: ${{ steps.dmg.outputs.path }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      # Launch test: run the signed Shuttle on the hosted Mac runner for 45 seconds.
+      # It fails if the app exits early or leaves a crash report. Everything else is only printed for a human to
+      # read: whether the sandbox container and the settings were created, the device name, whether port 53317
+      # is listening, sandbox denials, a screenshot.
+      # Not covered: pairing, transfers, the first-launch block after a download (an app built on the same
+      # machine has no quarantine flag), the local network permission prompt (nobody is there to click it).
+      - name: Launch test
+        working-directory: app
+        run: |
+          APP="$PWD/build/macos/Build/Products/Release/Shuttle.app"
+          OUT="$RUNNER_TEMP/launch-test"
+          CONTAINER="$HOME/Library/Containers/com.jackw.shareme"
+          PREFS="$CONTAINER/Data/Library/Preferences/com.jackw.shareme"
+          mkdir -p "$OUT"
+          "$APP/Contents/MacOS/Shuttle" > "$OUT/stdout.log" 2>&1 &
+          PID=$!
+          echo "Shuttle pid $PID"
+          alive=0
+          for i in $(seq 1 45); do
+            sleep 1
+            if ! kill -0 "$PID" 2>/dev/null; then break; fi
+            alive=$i
+          done
+          echo "--- still running after ${alive}s"
+          screencapture -x "$OUT/screen.png" || echo "screencapture failed"
+          echo "--- sandbox container"
+          ls -la "$CONTAINER/Data" 2>&1 | head -20
+          echo "--- settings keys (values not printed)"
+          defaults read "$PREFS" 2>/dev/null | grep -oE '^ *"?[A-Za-z0-9_.]+"? =' | sed 's/ =$//' | head -60 || echo "no settings yet"
+          echo "--- device name: $(defaults read "$PREFS" flutter.ls_alias 2>/dev/null || echo '(not set)')"
+          echo "--- listening sockets of Shuttle"
+          lsof -nP -a -p "$PID" -i 2>/dev/null | head -20 || true
+          echo "--- sandbox denials"
+          log show --last 3m --style compact --predicate 'eventMessage CONTAINS "Sandbox: Shuttle("' 2>/dev/null | tail -60 > "$OUT/sandbox-denials.log" || true
+          cat "$OUT/sandbox-denials.log"
+          echo "--- app log (last 80 lines)"
+          tail -80 "$OUT/stdout.log"
+          crashes=$(ls "$HOME/Library/Logs/DiagnosticReports" 2>/dev/null | grep -i shuttle || true)
+          if kill -0 "$PID" 2>/dev/null; then
+            kill "$PID" 2>/dev/null || true; sleep 3; kill -9 "$PID" 2>/dev/null || true
+          else
+            code=0; wait "$PID" || code=$?
+            echo "Shuttle exited with code $code"
+          fi
+          if [ -n "$crashes" ]; then
+            echo "Crash reports: $crashes"
+            cp "$HOME/Library/Logs/DiagnosticReports/"*[Ss]huttle* "$OUT/" 2>/dev/null || true
+            exit 1
+          fi
+          if [ "$alive" -lt 45 ]; then echo "Shuttle exited after only ${alive} s"; exit 1; fi
+          echo "Launch test passed: ran for 45 s without crashing"
+
+      - name: Upload launch test output
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, pinned 2026-11-14
+        with:
+          name: shuttle-macos-launch-test
+          path: ${{ runner.temp }}/launch-test
+          if-no-files-found: ignore
+          retention-days: 14

@@ -8,23 +8,19 @@ class LocalSendLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final logo = ColorFiltered(
-      colorFilter: ColorFilter.mode(
-        Theme.of(context).colorScheme.primary,
-        BlendMode.srcATop,
-      ),
-      child: Assets.img.logo512.image(
-        width: 200,
-        height: 200,
-      ),
+    // Shuttle: the new logo is already colored (dark background, gradient "S"), so it is no longer tinted with the theme color
+    final logo = Assets.img.logo512.image(
+      width: 160,
+      height: 160,
     );
 
     if (withText) {
       return Column(
         children: [
           logo,
+          const SizedBox(height: 12),
           const Text(
-            'LocalSend',
+            'Shuttle',
             style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),

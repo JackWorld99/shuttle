@@ -27,6 +27,10 @@ class NetworkStateMapper extends ClassMapperBase<NetworkState> {
     'localIps',
     _$localIps,
   );
+  static Map<String, String> _$interfaceNames(NetworkState v) =>
+      v.interfaceNames;
+  static const Field<NetworkState, Map<String, String>> _f$interfaceNames =
+      Field('interfaceNames', _$interfaceNames, opt: true, def: const {});
   static bool _$initialized(NetworkState v) => v.initialized;
   static const Field<NetworkState, bool> _f$initialized = Field(
     'initialized',
@@ -36,12 +40,14 @@ class NetworkStateMapper extends ClassMapperBase<NetworkState> {
   @override
   final MappableFields<NetworkState> fields = const {
     #localIps: _f$localIps,
+    #interfaceNames: _f$interfaceNames,
     #initialized: _f$initialized,
   };
 
   static NetworkState _instantiate(DecodingData data) {
     return NetworkState(
       localIps: data.dec(_f$localIps),
+      interfaceNames: data.dec(_f$interfaceNames),
       initialized: data.dec(_f$initialized),
     );
   }
@@ -109,7 +115,13 @@ extension NetworkStateValueCopy<$R, $Out>
 abstract class NetworkStateCopyWith<$R, $In extends NetworkState, $Out>
     implements ClassCopyWith<$R, $In, $Out> {
   ListCopyWith<$R, String, ObjectCopyWith<$R, String, String>> get localIps;
-  $R call({List<String>? localIps, bool? initialized});
+  MapCopyWith<$R, String, String, ObjectCopyWith<$R, String, String>>
+  get interfaceNames;
+  $R call({
+    List<String>? localIps,
+    Map<String, String>? interfaceNames,
+    bool? initialized,
+  });
   NetworkStateCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(Then<$Out2, $R2> t);
 }
 
@@ -129,15 +141,28 @@ class _NetworkStateCopyWithImpl<$R, $Out>
         (v) => call(localIps: v),
       );
   @override
-  $R call({List<String>? localIps, bool? initialized}) => $apply(
+  MapCopyWith<$R, String, String, ObjectCopyWith<$R, String, String>>
+  get interfaceNames => MapCopyWith(
+    $value.interfaceNames,
+    (v, t) => ObjectCopyWith(v, $identity, t),
+    (v) => call(interfaceNames: v),
+  );
+  @override
+  $R call({
+    List<String>? localIps,
+    Map<String, String>? interfaceNames,
+    bool? initialized,
+  }) => $apply(
     FieldCopyWithData({
       if (localIps != null) #localIps: localIps,
+      if (interfaceNames != null) #interfaceNames: interfaceNames,
       if (initialized != null) #initialized: initialized,
     }),
   );
   @override
   NetworkState $make(CopyWithData data) => NetworkState(
     localIps: data.get(#localIps, or: $value.localIps),
+    interfaceNames: data.get(#interfaceNames, or: $value.interfaceNames),
     initialized: data.get(#initialized, or: $value.initialized),
   );
 

@@ -5,6 +5,9 @@ import 'package:localsend_app/model/persistence/favorite_device.dart';
 import 'package:localsend_app/model/state/nearby_devices_state.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/logging/discovery_logs_provider.dart';
+import 'package:localsend_app/provider/paired_devices_provider.dart';
+import 'package:localsend_app/provider/settings_provider.dart';
+import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart' show isTailscaleIp;
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:refena_flutter/refena_flutter.dart';
@@ -19,6 +22,8 @@ final nearbyDevicesProvider = ReduxProvider<NearbyDevicesService, NearbyDevicesS
     isolateController: ref.notifier(parentIsolateProvider),
     favoriteService: ref.notifier(favoritesProvider),
     discoveryLogs: ref.notifier(discoveryLoggerProvider),
+    settingsService: ref.notifier(settingsProvider),
+    pairedDevices: ref.notifier(pairedDevicesProvider),
   );
 });
 
@@ -26,14 +31,20 @@ class NearbyDevicesService extends ReduxNotifier<NearbyDevicesState> {
   final IsolateController _isolateController;
   final FavoritesService _favoriteService;
   final DiscoveryLogger _discoveryLogger;
+  final SettingsService _settingsService;
+  final PairedDevicesService _pairedDevices;
 
   NearbyDevicesService({
     required IsolateController isolateController,
     required FavoritesService favoriteService,
     required DiscoveryLogger discoveryLogs,
+    required SettingsService settingsService,
+    required PairedDevicesService pairedDevices,
   }) : _discoveryLogger = discoveryLogs,
        _isolateController = isolateController,
-       _favoriteService = favoriteService;
+       _favoriteService = favoriteService,
+       _settingsService = settingsService,
+       _pairedDevices = pairedDevices;
 
   @override
   NearbyDevicesState init() => const NearbyDevicesState(
@@ -70,6 +81,65 @@ class ClearFoundDevicesAction extends ReduxAction<NearbyDevicesService, NearbyDe
   }
 }
 
+/// Shuttle: the device didn't answer either attempt of a periodic presence check, so remove it from the list and show it as
+/// "offline" (see shareme_presence.dart). If it was confirmed again after the check started ([since]), e.g. it just re-announced
+/// or registered itself, it is still around and stays. When it comes back it re-enters the list through normal discovery (its
+/// startup announcement, its own registration, or the next presence check).
+class RemoveUnreachableDeviceAction extends ReduxAction<NearbyDevicesService, NearbyDevicesState> {
+  final String fingerprint;
+  final DateTime since;
+
+  RemoveUnreachableDeviceAction({required this.fingerprint, required this.since});
+
+  @override
+  NearbyDevicesState reduce() {
+    if (!state.devices.containsKey(fingerprint)) return state;
+    final last = _lastConfirmed[fingerprint];
+    if (last != null && last.isAfter(since)) return state;
+    notifier._discoveryLogger.addLog('[OFFLINE] ${state.devices[fingerprint]!.alias} (${state.devices[fingerprint]!.ip}) did not answer');
+    return state.copyWith(devices: {...state.devices}..remove(fingerprint));
+  }
+}
+
+/// Shuttle: when each address (fingerprint@IP) was last confirmed; kept in memory only.
+/// Used to tell whether a device's LAN address is still "fresh", see [RegisterDeviceAction].
+final _confirmedAt = <String, DateTime>{};
+
+/// Shuttle: when each device (by fingerprint) was last confirmed, on any address. [RemoveUnreachableDeviceAction] uses it to
+/// tell whether the device was confirmed elsewhere after a failed check (e.g. it just re-announced).
+final _lastConfirmed = <String, DateTime>{};
+
+/// Shuttle: a periodic presence check got an answer on the address the device currently uses in the list: only record the time
+/// (so the LAN address stays "fresh" and isn't swapped for Tailscale), without touching the list, the settings or the discovery
+/// log (this happens as often as every 20 seconds, see shareme_presence.dart).
+void markDeviceSeen(String fingerprint, String ip) {
+  final now = DateTime.now();
+  _confirmedAt['$fingerprint@$ip'] = now;
+  _lastConfirmed[fingerprint] = now;
+}
+
+/// Within one scan the LAN and Tailscale confirmations usually arrive within seconds of each other; a LAN address not confirmed
+/// again within this time is no longer preferred.
+const lanStillFresh = Duration(seconds: 90);
+
+/// Shuttle: the same device was confirmed again ([incoming]); decides which address the list keeps.
+/// When the device is reachable at both a LAN and a Tailscale address, keep the LAN one (faster) — but only if the LAN address
+/// was also confirmed recently. Otherwise the peer has most likely left this Wi-Fi and the old address is dead (observed: after
+/// the phone switched to mobile data, the PC kept sending to the phone's stale Wi-Fi address).
+Device pickDeviceAddress({required Device old, required Device incoming, required DateTime? oldConfirmedAt, required DateTime now}) {
+  if (!isTailscaleIp(incoming.ip) || isTailscaleIp(old.ip)) return incoming;
+  return oldConfirmedAt != null && now.difference(oldConfirmedAt) < lanStillFresh ? old : incoming;
+}
+
+/// Shuttle security: while encryption is on locally, "my devices" are only accepted over encrypted connections.
+/// A peer announcing itself as unencrypted (HTTP) has no certificate to check, so anyone can impersonate the fingerprint it
+/// reports (fingerprints are public in announcements anyway); trusting it would send content meant for "my devices" in
+/// plaintext to the impostor. Unknown devices aren't blocked here: sending to them is a deliberate choice and the receiver
+/// has to accept. Nothing is blocked when the user turned encryption off in settings; that's the user's choice.
+bool isInsecureTrustedDevice({required Device device, required bool httpsEnabled, required Set<String> trustedFingerprints}) {
+  return httpsEnabled && !device.https && trustedFingerprints.contains(device.fingerprint);
+}
+
 /// Registers a device in the state.
 /// It will override any existing device with the same fingerprint: the
 /// incoming device is the merged store state, so it already carries every
@@ -86,15 +156,43 @@ class RegisterDeviceAction extends AsyncReduxAction<NearbyDevicesService, Nearby
   Future<NearbyDevicesState> reduce() async {
     assert(device.ip?.isNotEmpty ?? false, 'IP must not be empty');
 
-    final favoriteDevice = notifier._favoriteService.state.firstWhereOrNull((e) => e.fingerprint == device.fingerprint);
-    if (favoriteDevice != null && !favoriteDevice.customAlias) {
-      // Update existing favorite with new alias
-      await external(notifier._favoriteService).dispatchAsync(UpdateFavoriteAction(favoriteDevice.copyWith(alias: device.alias)));
-    } else {
-      await Future.microtask(() {});
+    // Shuttle security: reject a device claiming to be one of "my devices" that only has an unencrypted address (its reported
+    // name must not rename the favorite either).
+    final trusted = notifier._favoriteService.state.map((f) => f.fingerprint).toSet();
+    if (isInsecureTrustedDevice(device: device, httpsEnabled: notifier._settingsService.state.https, trustedFingerprints: trusted)) {
+      notifier._discoveryLogger.addLog(
+        '[SECURITY] ignored ${device.alias} (${device.ip}): claims to be one of My devices over an unencrypted connection',
+      );
+      return state;
     }
+
+    final favoriteDevice = notifier._favoriteService.state.firstWhereOrNull((e) => e.fingerprint == device.fingerprint);
+    // Shuttle: only update when the name really changed (UpdateFavoriteAction writes the settings file every time; devices are
+    // confirmed as often as every 20 seconds, see shareme_presence.dart)
+    // Shuttle: both actions dispatched here (UpdateFavoriteAction, LearnPairedAddressAction) are now synchronous (memory is
+    // updated at once, the save is queued), so they can no longer overwrite the saves made during pairing
+    if (favoriteDevice != null && !favoriteDevice.customAlias && favoriteDevice.alias != device.alias) {
+      // Update existing favorite with new alias
+      external(notifier._favoriteService).dispatch(UpdateFavoriteAction(favoriteDevice.copyWith(alias: device.alias)));
+    }
+    // Shuttle: a paired device was confirmed at a new LAN address (e.g. a laptop back on the home Wi-Fi after the office): record
+    // it in the pairing record so it is found directly by address next time. Encrypted connections only: without encryption the
+    // reported fingerprint can't be verified. device.ip is the address just confirmed (the Rust side puts the most recent first).
+    final ip = device.ip;
+    if (device.https && ip != null) {
+      external(notifier._pairedDevices).dispatch(LearnPairedAddressAction(fingerprint: device.fingerprint, ip: ip));
+    }
+    await Future.microtask(() {});
+    final now = DateTime.now();
+    _confirmedAt['${device.fingerprint}@${device.ip}'] = now;
+    _lastConfirmed[device.fingerprint] = now;
     return state.copyWith(
-      devices: {...state.devices}..update(device.fingerprint, (_) => device, ifAbsent: () => device),
+      devices: {...state.devices}
+        ..update(
+          device.fingerprint,
+          (old) => pickDeviceAddress(old: old, incoming: device, oldConfirmedAt: _confirmedAt['${old.fingerprint}@${old.ip}'], now: now),
+          ifAbsent: () => device,
+        ),
     );
   }
 }

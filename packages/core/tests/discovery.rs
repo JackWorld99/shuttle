@@ -10,7 +10,8 @@
 
 use localsend::crypto::cert::generate_self_signed;
 use localsend::discovery::{
-    self, DeviceIdentity, DiscoveryConfig, DiscoveryEvent, DiscoveryHandle,
+    self, DeviceChannel, DeviceIdentity, DiscoveredDevice, DiscoveryConfig, DiscoveryEvent,
+    DiscoveryHandle, HttpChannel,
 };
 use localsend::http::server::web::WebConfig;
 use localsend::http::server::{start_with_port, ServerConfigV2, TlsConfig};
@@ -451,5 +452,111 @@ async fn test_announcement_is_answered_and_device_stored() {
             .device_by_fingerprint(&receiver.fingerprint)
             .is_none(),
         "answering over HTTP must not make the receiver appear on the announcer's side"
+    );
+}
+
+/// shareMe: starts a discovery whose multicast side is disabled (see
+/// [test_discovery_works_without_multicast]), so that only the confirmations
+/// a test makes count.
+async fn start_without_multicast(alias: &str) -> (DiscoveryHandle, oneshot::Sender<()>) {
+    let cert = generate_self_signed().expect("Failed to generate an identity");
+    let (stop_tx, stop_rx) = oneshot::channel();
+    let handle = discovery::start(
+        DiscoveryConfig {
+            group: TEST_GROUP,
+            group_v6: Some(TEST_GROUP_V6),
+            port: NEXT_MULTICAST_PORT.fetch_add(1, Ordering::Relaxed),
+            interface_filter: InterfaceFilter {
+                whitelist: Some(vec!["203.0.113.1".to_string()]),
+                blacklist: None,
+            },
+            device: MulticastDevice {
+                alias: alias.to_string(),
+                version: PROTOCOL_VERSION_V2.to_string(),
+                device_model: Some("Rust".to_string()),
+                device_type: Some(DeviceType::Headless),
+                fingerprint: cert.fingerprint.clone(),
+                port: announce_port(),
+                protocol: ProtocolType::Http,
+                download: false,
+            },
+            identity: DeviceIdentity {
+                cert_pem: cert.certificate_pem,
+                private_key_pem: cert.private_key_pem,
+            },
+            timeout: discovery::DEFAULT_DISCOVERY_TIMEOUT,
+            event_tx: None,
+        },
+        stop_rx,
+    )
+    .await;
+    (handle, stop_tx)
+}
+
+/// shareMe: a paired device confirmed at `host` while the staged discovery
+/// waits out its grace period, the way the phone found the PC over
+/// Tailscale on 2026-11-14.
+fn paired_device_at(host: &str) -> DiscoveredDevice {
+    DiscoveredDevice {
+        alias: "Paired".to_string(),
+        version: PROTOCOL_VERSION_V2.to_string(),
+        device_model: Some("Windows".to_string()),
+        device_type: Some(DeviceType::Desktop),
+        fingerprint: "paired-fingerprint".to_string(),
+        channel: DeviceChannel::Http(HttpChannel {
+            host: host.to_string(),
+            port: 53317,
+            protocol: ProtocolType::Https,
+        }),
+        download: false,
+    }
+}
+
+/// Runs a staged discovery that scans the loopback subnet (where a register
+/// server waits) while `paired_device_at(confirmed_host)` is confirmed during
+/// the grace period. Returns whether the scan ran, i.e. found the server.
+async fn staged_scan_ran_after_confirmation_at(confirmed_host: &str) -> bool {
+    let (server_port, _server_stop) =
+        start_register_server("LanPeer", "lan-peer-fingerprint", None).await;
+    let (handle, _stop_tx) = start_without_multicast("Staged").await;
+
+    let staged = handle.discover_staged(
+        Vec::new(),
+        vec![Ipv4Addr::new(127, 0, 0, 99)],
+        server_port,
+        ProtocolType::Http,
+        Duration::from_millis(800),
+    );
+    let confirm = async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        handle.add_device(paired_device_at(confirmed_host)).await;
+    };
+    let (result, _) = tokio::join!(staged, confirm);
+    result.expect("Staged discovery failed");
+
+    handle.device_by_fingerprint("lan-peer-fingerprint").is_some()
+}
+
+#[tokio::test]
+async fn test_staged_discovery_still_scans_after_a_tailscale_confirmation() {
+    assert!(
+        staged_scan_ran_after_confirmation_at("100.110.20.30").await,
+        "a device found over Tailscale says nothing about the LAN, so the subnets must still be scanned"
+    );
+}
+
+#[tokio::test]
+async fn test_staged_discovery_still_scans_after_a_tailscale_ipv6_confirmation() {
+    assert!(
+        staged_scan_ran_after_confirmation_at("fd7a:115c:a1e0::1c36:b568").await,
+        "Tailscale's IPv6 range is an overlay as well"
+    );
+}
+
+#[tokio::test]
+async fn test_staged_discovery_skips_the_scan_after_a_lan_confirmation() {
+    assert!(
+        !staged_scan_ran_after_confirmation_at("192.168.0.10").await,
+        "a device confirmed on the LAN proves that the cheap stages work, so no scan"
     );
 }

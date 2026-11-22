@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:localsend_app/model/state/server/receive_session_state.dart';
 import 'package:localsend_app/model/state/server/receiving_file.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
-import 'package:localsend_app/pages/progress_page.dart';
 import 'package:localsend_app/pages/receive_page.dart';
+import 'package:localsend_app/pages/shareme_receive_page.dart';
+import 'package:localsend_app/pages/shareme_receive_progress_page.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/file_transfer_provider.dart';
@@ -17,6 +19,7 @@ import 'package:localsend_app/provider/logging/discovery_logs_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/network/server/server_utils.dart';
+import 'package:localsend_app/provider/paired_devices_provider.dart';
 import 'package:localsend_app/provider/receive_history_provider.dart';
 import 'package:localsend_app/provider/security_provider.dart';
 import 'package:localsend_app/provider/selection/selected_receiving_files_provider.dart';
@@ -25,7 +28,11 @@ import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
-import 'package:localsend_app/widget/dialogs/open_file_dialog.dart';
+import 'package:localsend_app/util/shareme_file_safety.dart';
+import 'package:localsend_app/util/shareme_sender_identity.dart';
+import 'package:localsend_app/widget/shareme/message_sheet.dart';
+import 'package:localsend_app/widget/shareme/quick_saved_notice.dart';
+import 'package:localsend_app/widget/shareme/receive_popup.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/file_status.dart';
@@ -58,6 +65,19 @@ class ReceiveController {
       return;
     }
 
+    // Shuttle security: when the server doesn't verify client certificates (the link page is being served, or encryption is off),
+    // the fingerprint in the registration is self-reported. Ignore anyone claiming to be one of "my devices" — otherwise they could
+    // rename the favorite or redirect content meant for it to another address. Real "my devices" are found by our own (encrypted,
+    // certificate-checked) scans.
+    final serverState = server.getState();
+    if (!serverVerifiesClients(https: serverState.https, webShareActive: serverState.web != null) &&
+        server.ref.read(favoritesProvider).any((f) => f.fingerprint == event.info.fingerprint)) {
+      server.ref
+          .notifier(discoveryLoggerProvider)
+          .addLog('[SECURITY] ignored "/register" from ${event.ip}: claims to be one of My devices without a certificate');
+      return;
+    }
+
     // Feed the device into the discovery store; it comes back (and is
     // registered) via the [StartDiscoveryListener] stream.
     server.ref.redux(parentIsolateProvider).dispatch(IsolateDiscoveryAddDeviceAction(device: event.info.toDevice(event.ip, withChannel: true)));
@@ -84,9 +104,11 @@ class ReceiveController {
     };
 
     // The fingerprint of the sender's mTLS certificate cannot be spoofed, unlike the
-    // self-reported fingerprint in the JSON payload which is only used as fallback
-    // when encryption is disabled.
-    final senderFingerprint = event.certFingerprint ?? event.info.fingerprint;
+    // self-reported fingerprint in the JSON payload.
+    // Shuttle security: without a certificate (link page served, or encryption off), don't fall back to the self-reported
+    // fingerprint — an impostor would be treated as one of "my devices" (auto-accepted, text auto-copied). Instead it gets a
+    // prefix so it never matches "my devices".
+    final senderFingerprint = verifiedSenderFingerprint(certFingerprint: event.certFingerprint, claimed: event.info.fingerprint);
 
     _logger.info('Session Id: $sessionId');
     _logger.info('Destination Directory: $destinationDir');
@@ -128,11 +150,9 @@ class ReceiveController {
 
     bool quickSave = settings.quickSave && server.getState().session?.message == null;
     final quickSaveFromFavorites = settings.quickSaveFromFavorites && server.getState().session?.message == null;
-    if (quickSaveFromFavorites) {
-      final bool isFavorite = server.ref.read(favoritesProvider).any((e) => e.fingerprint == senderFingerprint);
-      if (isFavorite) {
-        quickSave = true;
-      }
+    // Shuttle: only verified "my devices" are accepted directly; devices added with just "Add" still ask first (see isVerifiedMine)
+    if (quickSaveFromFavorites && isVerifiedMineDevice(server.ref, senderFingerprint)) {
+      quickSave = true;
     }
     if (server.getState().webUpload && settings.receiveViaLinkAutoAccept && server.getState().session?.message == null) {
       // The upload page (receive via link) is being served and requests should be accepted automatically.
@@ -140,15 +160,19 @@ class ReceiveController {
     }
 
     if (quickSave) {
-      // Push before accepting: the permission request in [acceptFileRequest] may block for a while.
-      // ignore: use_build_context_synchronously, unawaited_futures
-      Routerino.context.pushImmediately(
-        () => ProgressPage(
-          showAppBar: false,
-          closeSessionOnClose: true,
-          sessionId: sessionId,
-        ),
-      );
+      // Shuttle desktop: while the main window is in the tray / minimized, progress and completion show in the small bottom-right popup
+      if (await SmPopupWindow.shouldUse()) {
+        // ignore: use_build_context_synchronously, unawaited_futures
+        Routerino.context.pushImmediately(() => const SmReceivePopupPage());
+        await SmPopupWindow.enter(236);
+      } else {
+        // Push before accepting: the permission request in [acceptFileRequest] may block for a while.
+        // ignore: use_build_context_synchronously, unawaited_futures
+        Routerino.context.pushImmediately(
+          // Shuttle: receive progress uses Shuttle's own page (SmReceiveProgressPage)
+          () => SmReceiveProgressPage(sessionId: sessionId),
+        );
+      }
 
       // accept all files
       await acceptFileRequest({
@@ -157,16 +181,25 @@ class ReceiveController {
       return;
     }
 
-    if (checkPlatformHasTray() && (await windowManager.isMinimized() || !(await windowManager.isVisible()) || !(await windowManager.isFocused()))) {
+    // Shuttle desktop: while the main window is in the tray / minimized, file requests use the small bottom-right popup instead
+    // of bringing up the whole main window and stealing focus. Text and links work as before (main window + bottom sheet).
+    final usePopup = server.getState().session?.message == null && await SmPopupWindow.shouldUse();
+    if (!usePopup &&
+        checkPlatformHasTray() &&
+        (await windowManager.isMinimized() || !(await windowManager.isVisible()) || !(await windowManager.isFocused()))) {
       await showFromTray();
     }
 
     final message = server.getState().session?.message;
+    // Shuttle: the text sheet uses the sender as it was when the sheet opened. Text from "my devices" is answered and the session
+    // closed right away (see below), after which session is null; without this copy the sheet couldn't tell the text came from
+    // "my devices" and wouldn't auto-copy it.
+    final messageSender = message == null ? null : server.getState().session?.sender;
     if (message != null) {
       // Message already received
-      await server.ref
+      server.ref
           .redux(receiveHistoryProvider)
-          .dispatchAsync(
+          .dispatch(
             AddHistoryEntryAction(
               entryId: const Uuid().v4(),
               fileName: message,
@@ -177,6 +210,8 @@ class ReceiveController {
               fileSize: utf8.encode(message).length,
               senderAlias: server.getState().session!.senderAlias,
               timestamp: DateTime.now().toUtc(),
+              senderFingerprint: senderFingerprint, // Shuttle
+              batchId: sessionId, // Shuttle
             ),
           );
     }
@@ -187,7 +222,7 @@ class ReceiveController {
       final session = ref.watch(serverProvider)?.session;
       return ReceivePageVm(
         status: session?.status,
-        sender: session?.sender ?? Device.empty,
+        sender: messageSender ?? session?.sender ?? Device.empty,
         showSenderInfo: true,
         files: session?.files.values.map((f) => f.file).toList() ?? [],
         message: message,
@@ -208,12 +243,9 @@ class ReceiveController {
           // Push before accepting: the permission request in [acceptFileRequest] may block for a while.
           unawaited(
             Routerino.context.pushAndRemoveUntilImmediately(
-              removeUntil: ReceivePage,
-              builder: () => ProgressPage(
-                showAppBar: false,
-                closeSessionOnClose: true,
-                sessionId: sessionId,
-              ),
+              // Shuttle: file requests use SmReceivePage (text requests returned early above and never get here)
+              removeUntil: SmReceivePage,
+              builder: () => SmReceiveProgressPage(sessionId: sessionId),
             ),
           );
 
@@ -231,7 +263,47 @@ class ReceiveController {
     server.ref.notifier(selectedReceivingFilesProvider).setFiles(files.values.toList());
 
     // ignore: use_build_context_synchronously, unawaited_futures
-    Routerino.context.push(() => ReceivePage(receiveProvider));
+    if (message == null && usePopup) {
+      Routerino.context.pushImmediately(() => SmReceivePopupPage(vm: receiveProvider)); // ignore: use_build_context_synchronously, unawaited_futures
+      await SmPopupWindow.enter(320);
+    } else if (message == null) {
+      Routerino.context.push(() => SmReceivePage(receiveProvider)); // ignore: use_build_context_synchronously, unawaited_futures
+    } else if (isVerifiedMineDevice(server.ref, senderFingerprint)) {
+      // Shuttle: text from verified "my devices" is copied to the clipboard automatically and answered with "received" at once,
+      // with only a brief snackbar instead of a sheet covering the screen (unverified devices get the sheet as usual, no auto-copy).
+      // "View" opens the full text; for a URL the button is "Open". The text is still saved to the history.
+      // Read the sender name first: once "received" is answered the session is over and it would read as empty (the snackbar
+      // once said "Copied, from " with no name).
+      final alias = server.getStateOrNull()?.session?.senderAlias ?? '';
+      unawaited(Clipboard.setData(ClipboardData(text: message)));
+      server.ref.read(receiveProvider).onAccept();
+      showReceivedTextSnack(alias: alias, message: message, senderFingerprint: senderFingerprint);
+    } else {
+      // Shuttle: text and links are shown in a bottom sheet that is closed after reading.
+      // Closing the sheet answers the sender with "seen" (accepting no files, like LocalSend's "Close" button);
+      // if the sender already canceled, just close the session.
+      final sheet = showModalBottomSheet<void>(
+        // ignore: use_build_context_synchronously
+        context: Routerino.context,
+        useSafeArea: true,
+        isScrollControlled: true,
+        builder: (_) => SmMessageSheet(receiveProvider),
+      );
+      unawaited(
+        sheet.then((_) {
+          // Only handle this sheet's own session. If it was already answered (from "my devices"), or a new transfer arrived while the
+          // sheet was open, do nothing — otherwise the new transfer would be closed as "accept nothing"
+          final current = server.getStateOrNull()?.session;
+          if (current == null || current.sessionId != sessionId) return;
+          final vm = server.ref.read(receiveProvider);
+          if (current.status == SessionStatus.canceledBySender) {
+            vm.onClose();
+          } else {
+            vm.onAccept();
+          }
+        }),
+      );
+    }
   }
 
   /// An accepted file started being uploaded.
@@ -338,6 +410,12 @@ class ReceiveController {
     final error = event.error;
 
     if (error == null) {
+      // Shuttle: on the PC, files from unknown devices (including "Receive from a browser") get the Mark of the Web, see
+      // shareme_file_safety.dart. Only verified "my devices" are exempt.
+      final fromMyDevice = isVerifiedMineDevice(server.ref, receiveState.sender.fingerprint);
+      if (filePath != null && !event.savedToGallery && !fromMyDevice) {
+        await markFromInternet(filePath);
+      }
       server.ref.notifier(fileTransferProvider).setStatus(sessionId: event.sessionId, fileId: fileId, status: FileStatus.finished);
       server.setState(
         (oldState) => oldState?.copyWith(
@@ -351,9 +429,9 @@ class ReceiveController {
       );
 
       // Track it in history
-      await server.ref
+      server.ref
           .redux(receiveHistoryProvider)
-          .dispatchAsync(
+          .dispatch(
             AddHistoryEntryAction(
               entryId: fileId,
               fileName: receivingFile.desiredName!,
@@ -364,6 +442,12 @@ class ReceiveController {
               fileSize: receivingFile.file.size,
               senderAlias: receiveState.senderAlias,
               timestamp: DateTime.now().toUtc(),
+              // Shuttle: record the sender fingerprint and checksum result. Reaching this point means the file was received;
+              // if the sender attached a hash and verification is on here, the Rust core already checked it (a mismatch fails
+              // the file, so it never gets here)
+              senderFingerprint: receiveState.sender.fingerprint,
+              checksumVerified: server.ref.read(settingsProvider).verifyChecksums && receivingFile.file.hash != null,
+              batchId: event.sessionId,
             ),
           );
     } else {
@@ -415,29 +499,41 @@ class ReceiveController {
       // the session to stay open.
       bool quickSave = settings.quickSave && !hasError && server.getState().session?.message == null;
       final quickSaveFromFavorites = settings.quickSaveFromFavorites && !hasError && server.getState().session?.message == null;
-      if (quickSaveFromFavorites) {
-        final bool isFavorite = server.ref.read(favoritesProvider).any((e) => e.fingerprint == session.sender.fingerprint);
-        if (isFavorite) {
-          quickSave = true;
-        }
+      if (quickSaveFromFavorites && isVerifiedMineDevice(server.ref, session.sender.fingerprint)) {
+        quickSave = true;
       }
       if (quickSave) {
+        // Shuttle: while the bottom-right popup is open, hand it the final state before closing the session, so its "done" view
+        // can list every file
+        if (SmPopupWindow.active) {
+          final finalSession = server.getStateOrNull()?.session;
+          if (finalSession != null) {
+            final transfers = server.ref.read(fileTransferProvider);
+            SmPopupWindow.finalSnapshot = (
+              finalSession,
+              {for (final f in finalSession.files.values) f.file.id: transfers.getStatus(sessionId: finalSession.sessionId, fileId: f.file.id)},
+            );
+          }
+        }
         // close the session **after** the response has been sent
         Future.delayed(Duration.zero, () {
           closeSession();
           _logger.info('Closing session');
 
-          // ignore: use_build_context_synchronously, discarded_futures
-          Routerino.context.pushRootImmediately(() => const HomePage(initialTab: HomeTab.receive, appStart: false));
+          // Shuttle: while the bottom-right popup is open, it shows "done" and closes itself; leave the pages alone here
+          if (SmPopupWindow.active) return;
 
-          // open the dialog to open file instantly
+          // ignore: use_build_context_synchronously, discarded_futures
+          Routerino.context.pushRootImmediately(() => const HomePage(initialTab: HomeTab.transfer, appStart: false));
+
+          // Shuttle: instead of LocalSend's "Open file?" dialog, show a snackbar with one button (see quick_saved_notice.dart)
           if (filePath != null && filePath.isNotEmpty) {
-            // ignore: discarded_futures
-            OpenFileDialog.open(
-              Routerino.context, // ignore: use_build_context_synchronously
+            showQuickSavedNotice(
+              senderAlias: session.senderAlias,
+              count: statuses.where((s) => s == FileStatus.finished).length,
               filePath: filePath,
               fileType: fileType,
-              openGallery: event.savedToGallery,
+              savedToGallery: event.savedToGallery,
             );
           }
         });
@@ -517,7 +613,7 @@ class ReceiveController {
     // ignore: unawaited_futures, discarded_futures
     server.ref.redux(selectedSendingFilesProvider).dispatchAsyncTakeResult(LoadSelectionFromArgsAction(args)).then((filesAdded) {
       if (filesAdded) {
-        server.ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.send));
+        server.ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.transfer));
       }
     });
   }
@@ -537,6 +633,7 @@ class ReceiveController {
       return;
     }
 
+    unawaited(setTrayReminder(false)); // Shuttle: the request was handled, clear the tray reminder dot
     server.setState(
       (oldState) {
         final receiveState = oldState!.session!;
@@ -666,7 +763,7 @@ class ReceiveController {
       server.ref
           .read(httpProvider)
           .pinnedTo(target.fingerprint)
-          // ignore: unawaited_futures
+          // ignore: use_build_context_synchronously, unawaited_futures
           .cancel(
             protocol: target.getProtocolType(),
             ip: target.ip!,
@@ -687,6 +784,7 @@ class ReceiveController {
     }
 
     TransferNotification.stop(sessionId);
+    unawaited(setTrayReminder(false)); // Shuttle: the request is over (declined, canceled, finished), clear the tray reminder dot
 
     server.setState(
       (oldState) => oldState?.copyWith(
@@ -704,11 +802,16 @@ void _cancelBySender(ServerUtils server) {
   }
 
   TransferNotification.stop(receiveSession.sessionId);
+  unawaited(setTrayReminder(false)); // Shuttle: the sender canceled, nothing left for you to decide
 
   if (receiveSession.status == SessionStatus.waiting) {
     // received cancel during accept/decline
     // pop just in case if user is in [ReceiveOptionsPage]
-    Routerino.context.popUntil(ReceivePage);
+    // Shuttle: routerino's popUntil(Type) pops all the way down when the target page isn't found (there is no request page with
+    // quick save), so use a predicate with an isFirst fallback that matches both SmReceivePage and ReceivePage
+    Navigator.of(Routerino.context).popUntil(
+      (route) => route.settings.name == 'SmReceivePage' || route.settings.name == 'ReceivePage' || route.isFirst,
+    );
   }
 
   server.setState(

@@ -1,12 +1,18 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:localsend_app/config/init.dart';
 import 'package:localsend_app/config/init_error.dart';
+import 'package:localsend_app/config/shareme_licenses.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/color_mode.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/provider/local_ip_provider.dart';
+import 'package:localsend_app/provider/network/scan_facade.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
@@ -34,6 +40,9 @@ Future<void> main(List<String> args) async {
     return;
   }
 
+  registerShareMeFontLicenses(); // Shuttle: font licenses
+  _enableSemanticsForTests(); // Shuttle: for automated tests
+
   runApp(
     RefenaScope.withContainer(
       container: container,
@@ -44,6 +53,23 @@ Future<void> main(List<String> args) async {
       ),
     ),
   );
+}
+
+/// Shuttle: by default the desktop app only exposes its buttons to the Windows accessibility API when a screen reader is running.
+/// With the environment variable SHAREME_SEMANTICS=1 they are always exposed, so automated tests can find and "invoke" buttons
+/// via UI Automation instead of simulating the mouse (simulated clicks were blocked in the test environment). Normal launches
+/// are unaffected.
+/// Observed: with this switch on, UI Automation still sees only a single FLUTTERVIEW and no buttons in the Windows build
+/// (Flutter's Windows embedder seems to expose them only when it detects a screen reader). So this path is unused for now;
+/// the switch is kept to try again later.
+// The handle only needs to be held (disposing it turns semantics off again), so nothing reads it
+// ignore: unused_element
+SemanticsHandle? _testSemantics;
+
+void _enableSemanticsForTests() {
+  if (!checkPlatformIsDesktop()) return;
+  if (Platform.environment['SHAREME_SEMANTICS'] != '1') return;
+  _testSemantics = SemanticsBinding.instance.ensureSemantics();
 }
 
 class LocalSendApp extends StatelessWidget {
@@ -63,6 +89,9 @@ class LocalSendApp extends StatelessWidget {
             switch (state) {
               case AppLifecycleState.resumed:
                 ref.redux(localIpProvider).dispatch(InitLocalIpAction());
+                // Shuttle: when "my devices" are connected only via Tailscale while this device is on a LAN, look for a direct
+                // LAN connection again (see RescanForLanAction)
+                unawaited(ref.global.dispatchAsync(RescanForLanAction()));
                 if (checkPlatform([TargetPlatform.iOS, TargetPlatform.android])) {
                   // The OS may have invalidated the sockets of the suspended app without any error ever reaching the accept loop.
                   // ignore: discarded_futures
@@ -96,7 +125,7 @@ class LocalSendApp extends StatelessWidget {
               navigatorKey: context.read(navigationProvider).key,
               home: RouterinoHome(
                 builder: () => const HomePage(
-                  initialTab: HomeTab.receive,
+                  initialTab: HomeTab.transfer,
                   appStart: true,
                 ),
               ),
