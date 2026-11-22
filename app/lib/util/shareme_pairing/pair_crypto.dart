@@ -173,9 +173,10 @@ class PairInvite {
   }
 }
 
-/// Values both sides compute independently for people to compare by eye
+/// Values both sides compute independently from the transcript
 class PairSas {
-  /// 12 digits in three groups: "4821 0937 5562"
+  /// 12 digits in three groups: "4821 0937 5562". Shown only when the peer runs an older Shuttle that still asks people to
+  /// compare them by eye.
   final String digits;
 
   /// Seed for the "pairing seal" drawn by [DeviceSeal] (the seal uses only 18 bits and just helps the eye; security comes from the
@@ -183,6 +184,20 @@ class PairSas {
   final String sealKey;
 
   const PairSas({required this.digits, required this.sealKey});
+
+  /// PC-to-PC pairing: the host shows the first six digits and the guest the last six; each person types the code shown on the
+  /// other computer (see [PairHost.checkCode] and [PairGuest.checkCode]). A side never shows the code it expects, so the check
+  /// can't be passed by copying from the same screen.
+  String get hostCode => _six(0);
+  String get guestCode => _six(6);
+
+  String _six(int from) {
+    final d = digits.replaceAll(' ', '').substring(from, from + 6);
+    return '${d.substring(0, 3)} ${d.substring(3)}';
+  }
+
+  /// Whether [typed] is [code] (spaces and other separators are ignored)
+  static bool codeMatches(String typed, String code) => typed.replaceAll(RegExp(r'\D'), '') == code.replaceAll(' ', '');
 }
 
 /// Pairing key material; both sides use the same algorithm.

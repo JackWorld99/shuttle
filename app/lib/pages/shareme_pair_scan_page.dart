@@ -15,11 +15,22 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 
-enum _Stage { scanning, connecting, verifying, waiting, done, failed }
+enum _Stage {
+  scanning,
+  connecting,
 
-/// Shuttle: "Scan to pair" on the phone. Scan the QR code on the PC and compare the pairing seal; once both sides confirm,
-/// each adds the other to "My devices".
-/// Screens: (1) all-black viewfinder + instructions at the bottom → (2) compare the pairing seal → (3) paired.
+  /// Handshake done; both sides confirm on their own
+  finishing,
+
+  /// The PC runs an older Shuttle that still asks its user to compare the 12 digits: show them and wait for its "Same, pair"
+  legacy,
+  done,
+  failed,
+}
+
+/// Shuttle: "Scan to pair" on the phone. Scan the QR code on the PC: the code holds the PC's certificate fingerprint and a one-time
+/// key, so once the handshake checks out both sides pair on their own and add each other to "My devices" (nothing to compare).
+/// Screens: (1) all-black viewfinder + instructions at the bottom → (2) connecting → (3) paired, with a field to rename the PC.
 class SmPairScanPage extends StatefulWidget {
   const SmPairScanPage({super.key});
 
@@ -35,6 +46,9 @@ class _SmPairScanPageState extends State<SmPairScanPage> with Refena {
   PairFailure? _failure;
   bool _foreignCode = false;
   Timer? _foreignTimer;
+
+  /// "Cancel" was tapped while waiting for an older PC: ignore the failure the waiting loop reports afterwards
+  bool _cancelled = false;
 
   @override
   void dispose() {
@@ -79,37 +93,31 @@ class _SmPairScanPageState extends State<SmPairScanPage> with Refena {
   Future<void> _connect(PairInvite invite) async {
     setState(() => _stage = _Stage.connecting);
     unawaited(_scanner.stop());
+    _cancelled = false;
     try {
-      final session = await _guest().connect(invite);
+      final guest = _guest();
+      final session = await guest.connect(invite);
       if (!mounted) return;
       _name.text = session.peer.alias;
       setState(() {
         _session = session;
-        _stage = _Stage.verifying;
+        _stage = session.hostAutoQr ? _Stage.finishing : _Stage.legacy;
       });
+      // The QR code already proved who is who (pinned certificate + one-time key): confirm right away
+      await guest.confirm(session);
+      await savePairing(ref, session.peer, session.address.host, session.secret);
+      if (mounted && !_cancelled) setState(() => _stage = _Stage.done);
     } on PairException catch (e) {
-      _fail(e.failure);
+      if (!_cancelled) _fail(e.failure);
     } catch (_) {
-      _fail(PairFailure.unreachable);
+      if (!_cancelled) _fail(PairFailure.unreachable);
     }
   }
 
-  Future<void> _same() async {
-    final session = _session!;
-    setState(() => _stage = _Stage.waiting);
-    try {
-      await _guest().confirm(session);
-      await savePairing(ref, session.peer, session.address.host, session.secret, customName: _name.text);
-      if (mounted) setState(() => _stage = _Stage.done);
-    } on PairException catch (e) {
-      _fail(e.failure);
-    } catch (_) {
-      _fail(PairFailure.unreachable);
-    }
-  }
-
-  Future<void> _different() async {
+  /// "Cancel" while an older PC waits for its user to compare the digits
+  Future<void> _cancel() async {
     final session = _session;
+    _cancelled = true;
     _fail(PairFailure.rejectedHere);
     if (session != null) await _guest().reject(session);
   }
@@ -131,29 +139,38 @@ class _SmPairScanPageState extends State<SmPairScanPage> with Refena {
     await _scanner.start();
   }
 
+  void _finish() {
+    final session = _session;
+    if (session != null) renameMyDevice(ref, session.peer.fingerprint, _name.text, ownName: session.peer.alias);
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.sm;
     final s = t.shareme.pair;
     if (_stage == _Stage.scanning) return _scanView(context);
     return Scaffold(
-      appBar: AppBar(title: Text(_stage == _Stage.done ? s.doneTitle : s.verifyTitle)),
+      appBar: AppBar(title: Text(_stage == _Stage.done ? s.doneTitle : s.scanTitle)),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
           children: [
             switch (_stage) {
-              _Stage.connecting => Padding(
+              _Stage.connecting || _Stage.finishing => Padding(
                 padding: const EdgeInsets.only(top: 80),
                 child: Column(
                   children: [
                     const CircularProgressIndicator(),
                     const SizedBox(height: 16),
-                    Text(s.connecting, style: ShareMeText.body.copyWith(color: c.ink2)),
+                    Text(
+                      _stage == _Stage.connecting ? s.connecting : s.finishing,
+                      style: ShareMeText.body.copyWith(color: c.ink2),
+                    ),
                   ],
                 ),
               ),
-              _Stage.verifying || _Stage.waiting => _verifyView(context),
+              _Stage.legacy => _legacyView(context),
               _Stage.done => _doneView(context),
               _Stage.failed => Padding(
                 padding: const EdgeInsets.only(top: 60),
@@ -257,61 +274,31 @@ class _SmPairScanPageState extends State<SmPairScanPage> with Refena {
     );
   }
 
-  Widget _verifyView(BuildContext context) {
+  /// The PC runs an older Shuttle: it shows the same 12 digits and waits for its user to compare and confirm
+  Widget _legacyView(BuildContext context) {
     final c = context.sm;
     final s = t.shareme.pair;
     final session = _session!;
-    final peer = session.peer;
-    final waiting = _stage == _Stage.waiting;
     return Column(
       children: [
         Text(
-          s.verifyGuest,
+          s.legacyHost,
           style: ShareMeText.body.copyWith(color: c.ink2),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
         PairCheckPanel(sas: session.sas),
-        const SizedBox(height: 10),
-        Text(
-          peer.model == null ? peer.alias : s.peerLine(name: peer.alias, model: peer.model!),
-          style: ShareMeText.meta.copyWith(color: c.ink2),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 18),
-        TextField(
-          controller: _name,
-          enabled: !waiting,
-          maxLength: 32,
-          decoration: InputDecoration(labelText: s.nameIt, counterText: ''),
-        ),
         const SizedBox(height: 22),
-        if (waiting)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-              const SizedBox(width: 10),
-              Text(s.waitComputer, style: ShareMeText.body.copyWith(color: c.ink2)),
-            ],
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () async => _different(),
-                  style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(ShareMeSize.buttonH)),
-                  child: Text(s.different),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: FilledButton(onPressed: () async => _same(), child: Text(s.sameGuest)),
-              ),
-            ],
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(width: 10),
+            Text(s.waitComputer, style: ShareMeText.body.copyWith(color: c.ink2)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        TextButton(onPressed: () async => _cancel(), child: Text(t.shareme.settings.cancel)),
       ],
     );
   }
@@ -340,8 +327,15 @@ class _SmPairScanPageState extends State<SmPairScanPage> with Refena {
           style: ShareMeText.body.copyWith(color: c.ink2),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 24),
-        FilledButton(onPressed: () => Navigator.of(context).pop(), child: Text(s.done)),
+        const SizedBox(height: 18),
+        TextField(
+          controller: _name,
+          maxLength: 32,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(labelText: s.nameIt, counterText: ''),
+        ),
+        const SizedBox(height: 20),
+        FilledButton(onPressed: _finish, child: Text(s.done)),
       ],
     );
   }

@@ -1,17 +1,22 @@
-// Shuttle: message flow of QR pairing (same Wi-Fi).
-// - The PC (host) temporarily opens an HTTPS endpoint with its own TLS certificate; the phone (guest) pins it by the fingerprint in
-//   the QR code, so the handshake fails if the fingerprint doesn't match.
+// Shuttle: message flow of pairing (same Wi-Fi).
+// - QR pairing: the PC (host) temporarily opens an HTTPS endpoint with its own TLS certificate; the phone (guest) pins it by the
+//   fingerprint in the QR code, so the handshake fails if the fingerprint doesn't match. Every phone message carries a MAC keyed by
+//   the QR code's one-time key, so only a device that saw the code can pair. Both sides therefore confirm on their own once the
+//   handshake checks out, without asking anyone to compare digits (the same trust model as linking a device by QR code in Signal or
+//   WhatsApp). The code works once: a second device holding it is refused and the PC warns, and the PC's paired page offers to
+//   remove a device that isn't yours.
 // - The PC can't get the phone's certificate (dart:io's server doesn't accept unknown self-signed client certificates), so the
 //   phone states its own fingerprint in hello. Claiming someone else's fingerprint is useless: every later transfer uses mutual TLS
 //   on the Rust side, so a device without the matching private key can't connect; and a device sneaking in with its own fingerprint
-//   makes the pairing seals and digits differ between the two sides (the fingerprints are in the transcript hash).
-// - Both sides must choose "Same, pair"; the confirmation on the PC is required for security.
+//   changes the transcript hash, so the two sides' codes differ (the fingerprints are in the transcript hash).
 // - PC-to-PC pairing: without a camera, the QR code's one-time key can't be passed. The other PC gets this one's address and
 //   certificate fingerprint from "Nearby" and sends `nearby-hello` to the fixed port [pairNearbyPort]. There is no key, so that
 //   hello carries no MAC and anyone can send it; the PC replies with a session ID over the encrypted connection, which keys the MACs
-//   of later messages. Man-in-the-middle protection comes from commit-then-reveal plus people comparing 12 digits on both sides, the
-//   same idea as Bluetooth "Numeric Comparison" (KDE Connect also does "nearby → pair → compare on both sides", but its code has
-//   only 32 bits and no commitment).
+//   of later messages. Man-in-the-middle protection comes from commit-then-reveal plus each person typing the 6 digits shown on the
+//   other computer (the host shows the first half of the 12-digit code, the guest the second half), the same idea as Bluetooth
+//   "Numeric Comparison" but typed: people click a "Same" button out of habit, while a code can't be typed without looking (why
+//   Microsoft Authenticator moved from approve/deny to number matching). A peer that can't do this ([pairCapTyped]) is refused, so
+//   nobody can downgrade the check by posing as an older version.
 // - A PC request on the "Add device" page must first be accepted by a person: before, anyone on the same Wi-Fi could take over the
 //   pairing with a single `nearby-hello`, so a scanning phone only saw "already used", and QR pairing could be downgraded to relying
 //   on comparing digits by eye alone. Now the request just waits ("X wants to pair with this computer: Ignore / Accept"), the QR
@@ -41,6 +46,39 @@ const _maxNearbyRequests = 10;
 /// come, assume it has left.
 const _nearbyAcceptWait = Duration(seconds: 20);
 
+/// What this version can do while pairing, exchanged in hello and reply (`caps`), so each side knows how the other confirms.
+/// - [pairCapAutoQr]: confirms QR pairing on its own once the handshake checks out. Older versions ask their user to compare the 12
+///   digits and tap "Same, pair", so the other side shows the digits for them.
+/// - [pairCapTyped]: PC-to-PC pairing is confirmed by typing the code shown on the other computer. Required: a peer without it is
+///   refused ([PairFailure.outdated]).
+const pairCapAutoQr = 'auto-qr';
+const pairCapTyped = 'typed';
+const pairCaps = [pairCapAutoQr, pairCapTyped];
+
+/// PC-to-PC pairing: wrong codes allowed before the pairing is cancelled. Retrying doesn't help an attacker: the code of a session
+/// is fixed, so the retries only forgive typos.
+const pairCodeTries = 3;
+
+/// PC-to-PC pairing: time to type the codes on both computers (QR pairing uses [pairVerifyLifetime])
+const pairTypedVerifyLifetime = Duration(minutes: 3);
+
+enum PairCodeResult {
+  /// The code matches; this side confirms
+  match,
+
+  /// Wrong code; tries are left
+  wrong,
+
+  /// Too many wrong codes; the pairing is cancelled on both sides ([PairFailure.codeMismatch])
+  exhausted,
+}
+
+Set<String> _capsOf(Object? json) => {
+  if (json is List)
+    for (final c in json.take(16))
+      if (c is String) c,
+};
+
 enum PairFailure {
   /// The QR code expired / the pairing page on the PC was closed
   expired,
@@ -68,6 +106,12 @@ enum PairFailure {
 
   /// Bad message (version, format, MAC)
   protocol,
+
+  /// PC-to-PC pairing: the other computer runs a Shuttle that can't confirm by typed code
+  outdated,
+
+  /// PC-to-PC pairing: the typed code was wrong [pairCodeTries] times (a typo, or a device pretending to be the other computer)
+  codeMismatch,
 }
 
 class PairException implements Exception {
@@ -178,6 +222,10 @@ class PairHostState {
   /// yet; the QR code can still be scanned)
   final PairPeerInfo? request;
 
+  /// QR pairing with a phone running an older Shuttle: it still asks its user to compare the 12 digits and tap "Same, pair", so
+  /// the PC shows them too ([PairHostState.sas])
+  final bool legacyPeer;
+
   const PairHostState({
     required this.stage,
     this.qr,
@@ -190,6 +238,7 @@ class PairHostState {
     this.failure,
     this.nearby = false,
     this.request,
+    this.legacyPeer = false,
   });
 }
 
@@ -221,6 +270,12 @@ class _HostSession {
   Uint8List? transcript;
   Uint8List? secret;
   bool revealed = false;
+
+  /// What the guest said it can do ([pairCaps])
+  Set<String> guestCaps = const {};
+
+  /// PC-to-PC pairing: wrong codes left before the pairing is cancelled
+  int codeTriesLeft = pairCodeTries;
 
   bool get consumed => sid != null;
 }
@@ -263,6 +318,9 @@ class PairHost {
   /// KDE Connect's pairing requests last 30 seconds. Shorter in tests.
   final Duration nearbyRequestIdle;
 
+  /// What this side tells the peer it can do; tests pass fewer to act as an older version
+  final List<String> caps;
+
   final state = ValueNotifier(const PairHostState(stage: PairHostStage.starting));
 
   HttpServer? _server;
@@ -296,6 +354,7 @@ class PairHost {
     this.preferredPort = pairNearbyPort,
     this.onlyGuest,
     this.nearbyRequestIdle = const Duration(seconds: 15),
+    @visibleForTesting this.caps = pairCaps,
   });
 
   int? get port => _server?.port;
@@ -335,15 +394,31 @@ class PairHost {
     _set(PairHostState(stage: PairHostStage.showingCode, qr: invite.encode(), expiresAt: s.expiresAt));
   }
 
-  /// "Same, pair" was chosen on the PC
-  Future<void> confirm() async {
+  /// This side's confirmation. QR pairing confirms on its own at reveal; PC-to-PC pairing only after [checkCode] matched.
+  Future<void> _confirmHost() async {
     final st = state.value;
     if (st.stage != PairHostStage.verifying || st.hostConfirmed) return;
     _set(_copy(hostConfirmed: true));
     if (state.value.guestConfirmed) await _finalize();
   }
 
-  /// "Different" was chosen on the PC
+  /// PC-to-PC pairing: the code the person typed here, read from the other computer's screen (its half: [PairSas.guestCode]).
+  /// A match confirms this side; after [pairCodeTries] wrong codes the pairing is cancelled on both sides.
+  PairCodeResult checkCode(String typed) {
+    final st = state.value;
+    final s = _session;
+    if (st.stage != PairHostStage.verifying || !st.nearby || s == null || st.sas == null) return PairCodeResult.exhausted;
+    if (st.hostConfirmed) return PairCodeResult.match;
+    if (PairSas.codeMatches(typed, st.sas!.guestCode)) {
+      unawaited(_confirmHost());
+      return PairCodeResult.match;
+    }
+    if (--s.codeTriesLeft > 0) return PairCodeResult.wrong;
+    _fail(PairFailure.codeMismatch);
+    return PairCodeResult.exhausted;
+  }
+
+  /// The pairing is cancelled on the PC ("Cancel" while checking)
   void reject() {
     if (state.value.stage == PairHostStage.verifying) _fail(PairFailure.rejectedHere);
   }
@@ -393,6 +468,7 @@ class PairHost {
     bool? nearby,
     PairPeerInfo? request,
     bool clearRequest = false,
+    bool? legacyPeer,
   }) {
     final o = state.value;
     return PairHostState(
@@ -407,6 +483,7 @@ class PairHost {
       failure: failure ?? o.failure,
       nearby: nearby ?? o.nearby,
       request: clearRequest ? null : request ?? o.request,
+      legacyPeer: legacyPeer ?? o.legacyPeer,
     );
   }
 
@@ -509,12 +586,14 @@ class PairHost {
       ..guestIp = req.connectionInfo?.remoteAddress.address
       ..commit = commit
       ..helloMac = expected
-      ..hostNonce = randomBytes(32);
+      ..hostNonce = randomBytes(32)
+      ..guestCaps = _capsOf(body['caps']);
     s.reply = {
       'sid': s.sid,
       'peer': self.toJson(),
       'nonce': b64u(s.hostNonce!),
       'mac': b64u(pairMac(s.macKey, 'reply', [utf8Of(s.sid!), ...self.macParts(), s.hostNonce!, expected])),
+      'caps': caps,
     };
     _set(_copy(clearRequest: true));
     return _send(res, 200, s.reply!);
@@ -537,6 +616,11 @@ class PairHost {
     final guest = PairPeerInfo.fromJson(body['peer']);
     final commit = unb64u(body['commit'] as String);
     if (commit.length != 32) throw const PairException(PairFailure.protocol, 'commit');
+    if (!_capsOf(body['caps']).contains(pairCapTyped)) {
+      // An older Shuttle would confirm with a one-click "Same, pair". Refusing it also keeps a man in the middle from posing as one.
+      _countNearby(ip);
+      return _send(res, 426, {'error': 'outdated'});
+    }
     if (s.consumed) {
       if (s.nearby && s.guest!.fingerprint == guest.fingerprint && s.guestIp == ip && constantTimeEquals(s.commit!, commit)) {
         return _send(res, 200, s.reply!); // the same PC retrying, or fetching the reply after "Accept" was chosen here
@@ -592,11 +676,13 @@ class PairHost {
       ..commit = commit
       ..hostNonce = randomBytes(32);
     s.helloMac = pairMac(s.macKey, 'hello', [...guest.macParts(), commit]);
+    s.guestCaps = const {pairCapTyped}; // checked in _nearbyHello before any request gets this far
     s.reply = {
       'sid': s.sid,
       'peer': self.toJson(),
       'nonce': b64u(s.hostNonce!),
       'mac': b64u(pairMac(s.macKey, 'reply', [utf8Of(s.sid!), ...self.macParts(), s.hostNonce!, s.helloMac!])),
+      'caps': caps,
     };
     _set(_copy(nearby: true, peer: guest, clearRequest: true));
   }
@@ -624,8 +710,18 @@ class PairHost {
       ..transcript = t
       ..secret = PairKeys.pairSecret(k: s.transcriptKey, hostNonce: s.hostNonce!, guestNonce: nonce, transcript: t, nearby: s.nearby);
     _timer?.cancel();
-    _timer = Timer(pairVerifyLifetime, () => _fail(PairFailure.timeout));
-    _set(_copy(stage: PairHostStage.verifying, peer: s.guest, sas: PairKeys.sas(t)));
+    _timer = Timer(s.nearby ? pairTypedVerifyLifetime : pairVerifyLifetime, () => _fail(PairFailure.timeout));
+    _set(
+      _copy(
+        stage: PairHostStage.verifying,
+        peer: s.guest,
+        sas: PairKeys.sas(t),
+        // QR pairing: the phone proved it saw the code (MAC with its one-time key) and talks to this pinned certificate, so the PC
+        // confirms on its own. PC-to-PC pairing waits for the typed code (checkCode).
+        hostConfirmed: !s.nearby,
+        legacyPeer: !s.nearby && !s.guestCaps.contains(pairCapAutoQr),
+      ),
+    );
     return _send(res, 200, {'ok': true});
   }
 
@@ -699,7 +795,17 @@ class PairGuestSession {
   final Uint8List secret;
   final Uint8List macKey;
 
-  const PairGuestSession({
+  /// PC-to-PC pairing (no QR code): confirmed by typing the code shown on the other computer ([PairGuest.checkCode])
+  final bool nearby;
+
+  /// What the host said it can do ([pairCaps])
+  final Set<String> hostCaps;
+
+  /// PC-to-PC pairing: wrong codes left, and whether the typed code matched
+  int codeTriesLeft = pairCodeTries;
+  bool codeChecked = false;
+
+  PairGuestSession({
     required this.invite,
     required this.pin,
     required this.address,
@@ -709,7 +815,12 @@ class PairGuestSession {
     required this.transcript,
     required this.secret,
     required this.macKey,
+    this.nearby = false,
+    this.hostCaps = const {},
   });
+
+  /// QR pairing: the PC confirms on its own. False for an older PC, which still asks its user to compare the 12 digits.
+  bool get hostAutoQr => hostCaps.contains(pairCapAutoQr);
 }
 
 /// Phone side: connects to the PC from the QR code, exchanges nonces, and confirms after verification.
@@ -719,7 +830,10 @@ class PairGuest {
   /// Interval between polls (shorter in tests)
   final Duration pollInterval;
 
-  const PairGuest({required this.self, this.pollInterval = const Duration(seconds: 1)});
+  /// What this side tells the host it can do; tests pass fewer to act as an older version
+  final List<String> caps;
+
+  const PairGuest({required this.self, this.pollInterval = const Duration(seconds: 1), @visibleForTesting this.caps = pairCaps});
 
   /// Connects and exchanges messages until the pairing seal can be shown
   Future<PairGuestSession> connect(PairInvite invite) async {
@@ -729,7 +843,12 @@ class PairGuest {
     final nonce = randomBytes(32);
     final commit = sha256Of(nonce);
     final helloMac = pairMac(macKey, 'hello', [...self.macParts(), commit]);
-    final hello = await _post(pin, address, 'hello', {'peer': self.toJson(), 'commit': b64u(commit), 'mac': b64u(helloMac)});
+    final hello = await _post(pin, address, 'hello', {
+      'peer': self.toJson(),
+      'commit': b64u(commit),
+      'mac': b64u(helloMac),
+      'caps': caps,
+    });
     _checkHelloStatus(hello);
     return _finishHandshake(
       invite: invite,
@@ -759,7 +878,7 @@ class PairGuest {
     final address = (host: host, port: port);
     final nonce = randomBytes(32);
     final commit = sha256Of(nonce);
-    final request = {'peer': self.toJson(), 'commit': b64u(commit)};
+    final request = {'peer': self.toJson(), 'commit': b64u(commit), 'caps': caps};
     final deadline = DateTime.now().add(pairCodeLifetime);
     var hello = await _post(fingerprint, address, 'nearby-hello', request);
     var told = false;
@@ -800,6 +919,8 @@ class PairGuest {
         throw const PairException(PairFailure.used);
       case 410:
         throw const PairException(PairFailure.expired);
+      case 426:
+        throw const PairException(PairFailure.outdated);
       default:
         throw PairException(PairFailure.protocol, 'hello ${r.status}');
     }
@@ -823,6 +944,11 @@ class PairGuest {
     final replyMac = pairMac(macKey, 'reply', [utf8Of(sid), ...peer.macParts(), hostNonce, helloMac]);
     if (peer.fingerprint != pin || hostNonce.length != 32 || !constantTimeEquals(replyMac, unb64u(hello['mac'] as String))) {
       throw const PairException(PairFailure.protocol, 'reply');
+    }
+    final hostCaps = _capsOf(hello['caps']);
+    if (nearby && !hostCaps.contains(pairCapTyped)) {
+      // An older Shuttle would confirm with a one-click "Same, pair"; stop before revealing (its page times out on its own)
+      throw const PairException(PairFailure.outdated);
     }
     final reveal = await _post(pin, address, 'reveal', {
       'sid': sid,
@@ -849,13 +975,30 @@ class PairGuest {
       transcript: t,
       secret: PairKeys.pairSecret(k: k, hostNonce: hostNonce, guestNonce: nonce, transcript: t, nearby: nearby),
       macKey: macKey,
+      nearby: nearby,
+      hostCaps: hostCaps,
     );
   }
 
-  /// "Same, pair" was tapped on the phone: tells the PC, then waits until the PC confirms too. On return both sides have confirmed and
-  /// the pairing can be saved. [onWaiting] is called once if the PC hasn't confirmed yet (the UI shows "Waiting for the computer").
+  /// PC-to-PC pairing: the code the person typed here, read from the other computer's screen (its half: [PairSas.hostCode]).
+  /// On a match, [confirm] may be called. After [pairCodeTries] wrong codes the pairing is cancelled, and the other computer is told.
+  Future<PairCodeResult> checkCode(PairGuestSession s, String typed) async {
+    if (!s.nearby || s.codeTriesLeft <= 0) return PairCodeResult.exhausted;
+    if (s.codeChecked || PairSas.codeMatches(typed, s.sas.hostCode)) {
+      s.codeChecked = true;
+      return PairCodeResult.match;
+    }
+    if (--s.codeTriesLeft > 0) return PairCodeResult.wrong;
+    await reject(s);
+    return PairCodeResult.exhausted;
+  }
+
+  /// Confirms this side and waits until the host confirms too. On return both sides have confirmed and the pairing can be saved.
+  /// QR pairing calls it right after [connect]; PC-to-PC pairing only after [checkCode] matched. [onWaiting] is called once if the
+  /// host hasn't confirmed yet (the UI shows "Waiting for the computer").
   Future<void> confirm(PairGuestSession s, {VoidCallback? onWaiting}) async {
-    final deadline = DateTime.now().add(pairVerifyLifetime);
+    if (s.nearby && !s.codeChecked) throw const PairException(PairFailure.protocol, 'code not checked');
+    final deadline = DateTime.now().add(s.nearby ? pairTypedVerifyLifetime : pairVerifyLifetime);
     var r = await _post(s.pin, s.address, 'confirm', {
       'sid': s.sid,
       'mac': b64u(pairMac(s.macKey, 'confirm-guest', [utf8Of(s.sid), s.transcript])),
@@ -889,7 +1032,8 @@ class PairGuest {
     }
   }
 
-  /// "Different" was tapped on the phone: tries to tell the PC; if that fails it doesn't matter (the PC side times out)
+  /// Cancels the pairing ("Cancel", or too many wrong codes): tries to tell the host; if that fails it doesn't matter (the host
+  /// side times out)
   Future<void> reject(PairGuestSession s) async {
     try {
       await _post(s.pin, s.address, 'reject', {

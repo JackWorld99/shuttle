@@ -202,3 +202,21 @@ Future<void> savePairing(Ref ref, PairPeerInfo peer, String ip, Uint8List secret
   // Memory is already updated; return once both are written to disk (the pairing page then shows "paired")
   await Future.wait([ref.notifier(favoritesProvider).flushSave(), ref.notifier(pairedDevicesProvider).flushSave()]);
 }
+
+/// The name field on the paired page: renames the device in "My devices". Empty, or the device's own name, keeps following the
+/// name the device announces (like an unchanged field in [savePairing]).
+void renameMyDevice(Ref ref, String fingerprint, String name, {required String ownName}) {
+  final existing = ref.read(favoritesProvider).firstWhereOrNull((f) => f.fingerprint == fingerprint);
+  if (existing == null) return;
+  final typed = name.trim();
+  final custom = typed.isNotEmpty && typed != ownName;
+  final alias = custom ? typed : ownName;
+  if (existing.alias == alias && existing.customAlias == custom) return;
+  ref.redux(favoritesProvider).dispatch(UpdateFavoriteAction(existing.copyWith(alias: alias, customAlias: custom)));
+}
+
+/// Removes a device from "My devices" together with its pairing record ("Not your device? Remove it" on the paired page)
+void removeMyDevice(Ref ref, String fingerprint) {
+  ref.redux(favoritesProvider).dispatch(RemoveFavoriteAction(deviceFingerprint: fingerprint));
+  ref.redux(pairedDevicesProvider).dispatch(RemovePairedRecordAction(fingerprint));
+}

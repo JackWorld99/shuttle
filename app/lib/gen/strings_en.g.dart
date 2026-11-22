@@ -1814,28 +1814,6 @@ class Translations$shareme$pair$en {
   /// en: 'Couldn't start pairing: {error}'
   String startFailed({required Object error}) => 'Couldn\'t start pairing: ${error}';
 
-  /// en: 'Check the pairing seal'
-  String get verifyTitle => 'Check the pairing seal';
-
-  /// en: 'Look at your phone. Only if its seal and 12 digits match these exactly, select "Same, pair". If they differ, another device used this code first.'
-  String get verifyHost =>
-      'Look at your phone. Only if its seal and 12 digits match these exactly, select "Same, pair". If they differ, another device used this code first.';
-
-  /// en: 'Look at your computer. Only if its seal and 12 digits match these exactly, tap "Same, pair".'
-  String get verifyGuest => 'Look at your computer. Only if its seal and 12 digits match these exactly, tap "Same, pair".';
-
-  /// en: '{name} · {model}'
-  String peerLine({required Object name, required Object model}) => '${name} · ${model}';
-
-  /// en: 'Same, pair'
-  String get sameHost => 'Same, pair';
-
-  /// en: 'Same, pair'
-  String get sameGuest => 'Same, pair';
-
-  /// en: 'Different'
-  String get different => 'Different';
-
   /// en: 'Waiting for the phone to confirm…'
   String get waitPhone => 'Waiting for the phone to confirm…';
 
@@ -1845,8 +1823,8 @@ class Translations$shareme$pair$en {
   /// en: 'Name it'
   String get nameIt => 'Name it';
 
-  /// en: 'Another device scanned this code. If the device you're checking isn't your phone, select "Different".'
-  String get intruder => 'Another device scanned this code. If the device you\'re checking isn\'t your phone, select "Different".';
+  /// en: 'Another device scanned this code. If the device you're checking isn't your phone, select Cancel.'
+  String get intruder => 'Another device scanned this code. If the device you\'re checking isn\'t your phone, select Cancel.';
 
   /// en: 'Paired'
   String get doneTitle => 'Paired';
@@ -1868,11 +1846,12 @@ class Translations$shareme$pair$en {
   /// en: 'Canceled. Not paired.'
   String get failRejectedHere => 'Canceled. Not paired.';
 
-  /// en: 'The other device said they're different. Not paired.'
-  String get failRejectedPeer => 'The other device said they\'re different. Not paired.';
+  /// en: 'The other device canceled. Not paired.'
+  String get failRejectedPeer => 'The other device canceled. Not paired.';
 
-  /// en: 'This code was already used by another device. Make a new code on the computer and scan again.'
-  String get failUsed => 'This code was already used by another device. Make a new code on the computer and scan again.';
+  /// en: 'This code was already used by another device. If that wasn't you, remove the unknown device on the computer, then scan a new code.'
+  String get failUsed =>
+      'This code was already used by another device. If that wasn\'t you, remove the unknown device on the computer, then scan a new code.';
 
   /// en: 'The code expired. Make a new one on the computer and scan again.'
   String get failExpired => 'The code expired. Make a new one on the computer and scan again.';
@@ -1933,16 +1912,6 @@ class Translations$shareme$pair$en {
   /// en: 'Not Shuttle on the other side? Add without checking'
   String get nearbyAddPlain => 'Not Shuttle on the other side? Add without checking';
 
-  /// en: 'Look at the screen of {name}: only click Same, pair if the seal and all 12 digits match exactly.'
-  String verifyNearby({required Object name}) => 'Look at the screen of ${name}: only click Same, pair if the seal and all 12 digits match exactly.';
-
-  /// en: 'Look at the screen of {name}: only click Same, pair if the seal and all 12 digits match exactly. If they differ, another device is pretending to be it.'
-  String verifyHostNearby({required Object name}) =>
-      'Look at the screen of ${name}: only click Same, pair if the seal and all 12 digits match exactly. If they differ, another device is pretending to be it.';
-
-  /// en: 'Waiting for {name} to confirm…'
-  String waitPeer({required Object name}) => 'Waiting for ${name} to confirm…';
-
   /// en: 'Try again'
   String get tryAgainShort => 'Try again';
 
@@ -1979,9 +1948,50 @@ class Translations$shareme$pair$en {
   /// en: 'The other device didn't accept. Not paired.'
   String get failDeclined => 'The other device didn\'t accept. Not paired.';
 
-  /// en: 'A phone scanned this code, but this computer is checking with {name}. If you meant to pair that phone, select "Different", then show it a new code.'
+  /// en: 'A phone scanned this code, but this computer is checking with {name}. If you meant to pair that phone, select Cancel, then show it a new code.'
   String intruderNearby({required Object name}) =>
-      'A phone scanned this code, but this computer is checking with ${name}. If you meant to pair that phone, select "Different", then show it a new code.';
+      'A phone scanned this code, but this computer is checking with ${name}. If you meant to pair that phone, select Cancel, then show it a new code.';
+
+  /// en: 'Finishing pairing…'
+  String get finishing => 'Finishing pairing…';
+
+  /// en: 'The computer runs an older Shuttle: check these 12 digits on it, and if they match, select "Same, pair" there.'
+  String get legacyHost => 'The computer runs an older Shuttle: check these 12 digits on it, and if they match, select "Same, pair" there.';
+
+  /// en: 'The phone runs an older Shuttle: check these 12 digits on it, and if they match, tap "Same, pair" there.'
+  String get legacyGuest => 'The phone runs an older Shuttle: check these 12 digits on it, and if they match, tap "Same, pair" there.';
+
+  /// en: 'Not your device? Remove it'
+  String get notMine => 'Not your device? Remove it';
+
+  /// en: 'Another device tried to use this code and was turned away. If {name} isn't yours, select "Not your device? Remove it" below.'
+  String intruderAfter({required Object name}) =>
+      'Another device tried to use this code and was turned away. If ${name} isn\'t yours, select "Not your device? Remove it" below.';
+
+  /// en: 'Type this on {name}'
+  String typedShow({required Object name}) => 'Type this on ${name}';
+
+  /// en: 'Type the code shown on {name}'
+  String typedEnter({required Object name}) => 'Type the code shown on ${name}';
+
+  /// en: 'Typing each other's code makes sure you're connected to that computer, not to something pretending to be it.'
+  String get typedHint => 'Typing each other\'s code makes sure you\'re connected to that computer, not to something pretending to be it.';
+
+  /// en: 'That's not it. Check the screen of {name} again (tries left: {n}).'
+  String typedWrong({required Object name, required Object n}) => 'That\'s not it. Check the screen of ${name} again (tries left: ${n}).';
+
+  /// en: 'This side checks out. It finishes once you type the code on {name} too.'
+  String typedChecked({required Object name}) => 'This side checks out. It finishes once you type the code on ${name} too.';
+
+  /// en: 'The other device runs an older Shuttle. Update it first, then pair.'
+  String get failOutdated => 'The other device runs an older Shuttle. Update it first, then pair.';
+
+  /// en: '{name} runs an older Shuttle. Update it first, then pair.'
+  String failNearbyOutdated({required Object name}) => '${name} runs an older Shuttle. Update it first, then pair.';
+
+  /// en: '{n} wrong codes, so pairing was canceled. If you typed them right, another device may be pretending to be the other computer. Don't pair on this network for now.'
+  String failCodeMismatch({required Object n}) =>
+      '${n} wrong codes, so pairing was canceled. If you typed them right, another device may be pretending to be the other computer. Don\'t pair on this network for now.';
 }
 
 // Path: shareme.settings

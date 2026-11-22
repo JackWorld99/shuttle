@@ -39,7 +39,7 @@ Share → tap your PC → done. The original file, every byte checked.
 | ⚡ **As fast as your Wi-Fi** | Nothing goes through a server, so there's no upload and no download. In our tests, 200 photos (about 500 MB) went from phone to PC in under 40 seconds on ordinary home Wi-Fi. |
 | 🤝 **Pair once, then it just works** | Scan a QR code one time. From then on your devices find each other, and files from them arrive without a single tap. |
 | 📋 **Copy here, paste there** | Press <kbd>Ctrl</kbd>+<kbd>V</kbd> on your PC to send the clipboard to your phone. Share a link from your phone and it's ready to paste on your PC. |
-| 🔒 **Private by design** | No account, no cloud, no tracking, no ads. Transfers are encrypted, and pairing compares 12 digits on both screens so no one can sneak in. |
+| 🔒 **Private by design** | No account, no cloud, no tracking, no ads. Transfers are encrypted, and only the device that scans the QR code on your screen can pair, so no one can sneak in. |
 | 🖥️ **Always ready** | Shuttle waits quietly in the tray, can start with Windows, and keeps itself up to date with signed updates. |
 | 🌍 **Works away from home** | Add [Tailscale](https://tailscale.com) on both devices and it works over mobile data too — still without anyone's server in between. |
 
@@ -62,7 +62,7 @@ Share → tap your PC → done. The original file, every byte checked.
 ## Get started in a minute
 
 1. **Install** Shuttle on your phone and your PC (buttons above) and connect both to the same Wi-Fi.
-2. **Pair**: on the PC click **Add device**; on the phone tap the scan button and point it at the QR code. Both screens show the same 12 digits — confirm, and you're paired.
+2. **Pair**: on the PC click **Add device**; on the phone tap the scan button and point it at the QR code. That's it, you're paired.
 3. **Toss things over**:
    - **Phone → PC**: in any app, tap **Share → Shuttle**.
    - **PC → phone**: drag files onto Shuttle, or press <kbd>Ctrl</kbd>+<kbd>V</kbd>.
@@ -81,7 +81,7 @@ Yes. Shuttle is open source (Apache-2.0), with no ads, no paid tier and no accou
 <details>
 <summary><b>Is it safe? Could someone else on the Wi-Fi get my files?</b></summary>
 
-Files go directly between your devices and are encrypted on the way. Only devices you paired (and checked the 12 digits for) can send to you without asking; anything else needs your OK first. Details in [SECURITY.md](SECURITY.md).
+Files go directly between your devices and are encrypted on the way. Only devices you paired can send to you without asking; anything else needs your OK first. Pairing is tied to the QR code on your screen, and two computers pair by typing each other's 6-digit code, so a device in the middle can't slip in. Details in [SECURITY.md](SECURITY.md).
 </details>
 
 <details>

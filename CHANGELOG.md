@@ -7,6 +7,7 @@ Shuttle is based on [LocalSend](https://github.com/localsend/localsend) 1.18.2; 
 
 | Build | Date | Changes |
 |---|---|---|
+| 2306 | 2026-11-22 | Pairing by QR code no longer asks you to compare digits; two computers pair by typing each other's 6-digit code; the paired page can rename the device or remove one that isn't yours |
 | 2305 | 2026-11-22 | Source code published; updates now come from this repository and are signed with a new key, so install this version once by hand (auto-update resumes afterwards). On the computer, new installs follow the system language; the Windows installer is in English and Chinese; the drop zone shows the name from "My devices"; clearer English wording |
 | 2289 | 2026-11-21 | Only verified devices are auto-accepted; faster hashing before sending; media saved straight to the gallery on Android 10+; Android now uses a release signing key (uninstall the old build once); small UI fixes |
 | 2283 | 2026-11-21 | "My devices" and pairing records no longer overwrite each other when changed at the same time |

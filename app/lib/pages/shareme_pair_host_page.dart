@@ -11,16 +11,17 @@ import 'package:localsend_app/provider/security_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_protocol.dart';
+import 'package:localsend_app/widget/shareme/confirm_remove_device.dart';
 import 'package:localsend_app/widget/shareme/pair_widgets.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 
-/// Shuttle: "Pair a new device" on the PC. Shows a QR code, waits for the phone to scan it, then both compare the pairing seal.
-/// Nothing is saved until the PC user clicks "Same, pair".
-/// Another PC can also pair directly from "Nearby" (no QR code); the verify text then says to look at that PC's screen.
-/// That PC's request first shows as "X wants to pair with this computer: Ignore / Accept"; verification only starts after
-/// "Accept". Until then the QR code can still be scanned (so someone on the same Wi-Fi can't occupy pairing with a request
-/// and downgrade QR pairing to a visual-only check).
+/// Shuttle: "Pair a new device" on the PC. Shows a QR code; a phone that scans it pairs on its own (the code holds this PC's
+/// certificate fingerprint and a one-time key). The paired page names the device, warns if another device tried the same code,
+/// and offers "Not your device? Remove it".
+/// Another PC can also pair directly from "Nearby" (no QR code): each person then types the 6 digits shown on the other computer.
+/// That PC's request first shows as "X wants to pair with this computer: Ignore / Accept"; checking only starts after "Accept".
+/// Until then the QR code can still be scanned (so someone on the same Wi-Fi can't occupy pairing with a request).
 class SmPairHostPage extends StatefulWidget {
   const SmPairHostPage({super.key});
 
@@ -107,6 +108,19 @@ class _SmPairHostPageState extends State<SmPairHostPage> with Refena {
   void _newCode() {
     _name.clear();
     _host?.renew();
+  }
+
+  void _finish(PairPeerInfo peer) {
+    renameMyDevice(ref, peer.fingerprint, _name.text, ownName: peer.alias);
+    Navigator.of(context).pop();
+  }
+
+  /// "Not your device? Remove it": someone else may have used the code (it was visible on this screen)
+  Future<void> _removeNotMine(PairPeerInfo peer) async {
+    final name = _name.text.trim().isEmpty ? peer.alias : _name.text.trim();
+    if (!await confirmRemoveDevice(context, name) || !mounted) return;
+    removeMyDevice(ref, peer.fingerprint);
+    Navigator.of(context).pop();
   }
 
   @override
@@ -219,82 +233,81 @@ class _SmPairHostPageState extends State<SmPairHostPage> with Refena {
         );
       case PairHostStage.verifying:
         final peer = st.peer!;
-        return Column(
-          children: [
-            Text(
-              s.verifyTitle,
-              style: ShareMeText.display.copyWith(color: c.ink),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              peer.model == null ? peer.alias : s.peerLine(name: peer.alias, model: peer.model!),
-              style: ShareMeText.meta.copyWith(color: c.ink2),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 22),
-            PairCheckPanel(sas: st.sas!),
-            const SizedBox(height: 18),
-            Text(
-              st.nearby ? s.verifyHostNearby(name: peer.alias) : s.verifyHost,
-              style: ShareMeText.body.copyWith(color: c.ink2),
-              textAlign: TextAlign.center,
-            ),
-            if (st.intruder) ...[
-              const SizedBox(height: 14),
+        final warning = st.intruder
+            ? Padding(
+                padding: const EdgeInsets.only(top: 14),
+                child: Text(
+                  st.nearby ? s.intruderNearby(name: peer.alias) : s.intruder,
+                  style: ShareMeText.body.copyWith(color: c.warn, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                ),
+              )
+            : const SizedBox.shrink();
+        if (st.nearby) {
+          // Another PC: each person types the 6 digits shown on the other computer
+          return Column(
+            children: [
+              TypedCodePanel(
+                myCode: st.sas!.hostCode,
+                peerName: peer.alias,
+                onSubmit: (code) async => host.checkCode(code),
+                onCancel: host.reject,
+              ),
+              warning,
+            ],
+          );
+        }
+        if (st.legacyPeer) {
+          // A phone with an older Shuttle still asks its user to compare these 12 digits and tap "Same, pair"
+          return Column(
+            children: [
               Text(
-                st.nearby ? s.intruderNearby(name: peer.alias) : s.intruder,
-                style: ShareMeText.body.copyWith(color: c.warn, fontWeight: FontWeight.w600),
+                s.legacyGuest,
+                style: ShareMeText.body.copyWith(color: c.ink2),
                 textAlign: TextAlign.center,
               ),
-            ],
-            const SizedBox(height: 18),
-            TextField(
-              controller: _name,
-              enabled: !st.hostConfirmed,
-              maxLength: 32,
-              decoration: InputDecoration(labelText: s.nameIt, counterText: ''),
-            ),
-            const SizedBox(height: 20),
-            if (st.hostConfirmed)
+              const SizedBox(height: 22),
+              PairCheckPanel(sas: st.sas!),
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                   const SizedBox(width: 10),
-                  Text(
-                    st.nearby ? s.waitPeer(name: peer.alias) : s.waitPhone,
-                    style: ShareMeText.body.copyWith(color: c.ink2),
-                  ),
-                ],
-              )
-            else
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: host.reject,
-                      style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(ShareMeSize.buttonH)),
-                      child: Text(s.different),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton(onPressed: () async => host.confirm(), child: Text(s.sameHost)),
-                  ),
+                  Text(s.waitPhone, style: ShareMeText.body.copyWith(color: c.ink2)),
                 ],
               ),
-          ],
+              const SizedBox(height: 12),
+              TextButton(onPressed: host.reject, child: Text(t.shareme.settings.cancel)),
+              warning,
+            ],
+          );
+        }
+        // A current phone confirms on its own within a moment
+        return Padding(
+          padding: const EdgeInsets.only(top: 60),
+          child: Column(
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 18),
+              Text(
+                s.finishing,
+                style: ShareMeText.body.copyWith(color: c.ink2),
+                textAlign: TextAlign.center,
+              ),
+              warning,
+            ],
+          ),
         );
       case PairHostStage.paired:
+        final peer = st.peer!;
         final settings = context.watch(settingsProvider);
         final me = context.read(securityProvider).certificateHash;
-        final name = _name.text.trim().isEmpty ? st.peer!.alias : _name.text.trim();
+        final name = _name.text.trim().isEmpty ? peer.alias : _name.text.trim();
         return Column(
           children: [
             const SizedBox(height: 12),
-            PairedDuo(myFingerprint: me, myName: host.self.alias, theirFingerprint: st.peer!.fingerprint, theirName: name),
+            PairedDuo(myFingerprint: me, myName: host.self.alias, theirFingerprint: peer.fingerprint, theirName: name),
             const SizedBox(height: 22),
             Text(s.doneTitle, style: ShareMeText.display.copyWith(color: c.ink)),
             const SizedBox(height: 10),
@@ -303,8 +316,25 @@ class _SmPairHostPageState extends State<SmPairHostPage> with Refena {
               style: ShareMeText.body.copyWith(color: c.ink2),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            FilledButton(onPressed: () => Navigator.of(context).pop(), child: Text(s.done)),
+            if (st.intruder) ...[
+              const SizedBox(height: 14),
+              Text(
+                s.intruderAfter(name: name),
+                style: ShareMeText.body.copyWith(color: c.warn, fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+              ),
+            ],
+            const SizedBox(height: 18),
+            TextField(
+              controller: _name,
+              maxLength: 32,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(labelText: s.nameIt, counterText: ''),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(onPressed: () => _finish(peer), child: Text(s.done)),
+            const SizedBox(height: 8),
+            TextButton(onPressed: () async => _removeNotMine(peer), child: Text(s.notMine)),
           ],
         );
       case PairHostStage.failed:

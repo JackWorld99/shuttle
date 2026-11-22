@@ -30,7 +30,10 @@ PairPeerInfo _guest([String? fp]) => PairPeerInfo(
   addresses: const ['192.168.9.128', '100.101.102.103'],
 );
 
-Future<(PairHost, List<(PairPeerInfo, String, Uint8List)>)> _startHost({Duration nearbyRequestIdle = const Duration(seconds: 15)}) async {
+Future<(PairHost, List<(PairPeerInfo, String, Uint8List)>)> _startHost({
+  Duration nearbyRequestIdle = const Duration(seconds: 15),
+  List<String> caps = pairCaps,
+}) async {
   final saved = <(PairPeerInfo, String, Uint8List)>[];
   final host = PairHost(
     self: _host(),
@@ -40,6 +43,7 @@ Future<(PairHost, List<(PairPeerInfo, String, Uint8List)>)> _startHost({Duration
     loopbackOnly: true,
     preferredPort: 0, // not the real pairing port, so a Shuttle pairing page open on this machine doesn't conflict
     nearbyRequestIdle: nearbyRequestIdle,
+    caps: caps,
     onPaired: (peer, ip, secret) async => saved.add((peer, ip, secret)),
   );
   await host.start();
@@ -57,6 +61,12 @@ Future<void> _until(bool Function() condition) async {
 Matcher _fails(PairFailure f) => throwsA(isA<PairException>().having((e) => e.failure, 'failure', f));
 
 PairInvite _invite(PairHost host) => PairInvite.tryParse(host.state.value.qr!)!;
+
+/// A 6-digit code that is not [code] (its first digit changed)
+String _otherCode(String code) {
+  final d = code.replaceAll(' ', '');
+  return '${(int.parse(d[0]) + 1) % 10}${d.substring(1)}';
+}
 
 /// The "other computer" in computer-to-computer pairing
 PairPeerInfo _otherComputer([String? fp]) => PairPeerInfo(
@@ -143,6 +153,15 @@ void main() {
       expect(PairKeys.macKey(k), isNot(PairKeys.macKey(k, nearby: true)));
     });
 
+    test('computer to computer: the host shows the first half of the code and the guest the second', () {
+      final sas = PairKeys.sas(sha256Of([9, 9, 9]));
+      final d = sas.digits.replaceAll(' ', '');
+      expect(sas.hostCode, '${d.substring(0, 3)} ${d.substring(3, 6)}');
+      expect(sas.guestCode, '${d.substring(6, 9)} ${d.substring(9)}');
+      expect(PairSas.codeMatches(' ${d.substring(0, 6)} ', sas.hostCode), isTrue, reason: 'spaces are ignored');
+      expect(PairSas.codeMatches(_otherCode(sas.hostCode), sas.hostCode), isFalse);
+    });
+
     test('check code is 12 digits in three groups and deterministic', () {
       final t = sha256Of([1, 2, 3]);
       final a = PairKeys.sas(t);
@@ -153,26 +172,25 @@ void main() {
   });
 
   group('protocol', () {
-    test('both sides see the same seal and digits, and save the same secret', () async {
+    test('QR pairing: the computer confirms on its own once the phone proved it saw the code; both save the same secret', () async {
       final (host, saved) = await _startHost();
       addTearDown(host.close);
       final guest = PairGuest(self: _guest(), pollInterval: const Duration(milliseconds: 20));
 
       final session = await guest.connect(_invite(host));
       expect(host.state.value.stage, PairHostStage.verifying);
+      expect(host.state.value.hostConfirmed, isTrue, reason: 'nobody has to compare digits on the computer any more');
+      expect(host.state.value.legacyPeer, isFalse);
+      expect(session.hostAutoQr, isTrue);
       expect(host.state.value.sas!.digits, session.sas.digits);
       expect(host.state.value.sas!.sealKey, session.sas.sealKey);
       expect(host.state.value.peer!.fingerprint, _guestFp);
       expect(session.peer.alias, '书房电脑');
+      expect(saved, isEmpty, reason: 'nothing is saved before the phone confirms');
 
-      // the phone confirms first, then the computer
       var waited = false;
-      final confirming = guest.confirm(session, onWaiting: () => waited = true);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(saved, isEmpty, reason: 'nothing may be saved before the computer confirms');
-      await host.confirm();
-      await confirming;
-      expect(waited, isTrue);
+      await guest.confirm(session, onWaiting: () => waited = true);
+      expect(waited, isFalse, reason: 'the computer had already confirmed');
       expect(host.state.value.stage, PairHostStage.paired);
       expect(saved.single.$1.fingerprint, _guestFp);
       expect(saved.single.$2, '127.0.0.1');
@@ -180,6 +198,25 @@ void main() {
       // both sides get each other's addresses (Tailscale included), for later when not on the same Wi-Fi
       expect(saved.single.$1.addresses, ['192.168.9.128', '100.101.102.103']);
       expect(session.peer.addresses, ['192.168.9.20', '100.88.1.2']);
+    });
+
+    test('QR pairing: a phone with an older Shuttle still confirms by hand, and the computer shows it the digits', () async {
+      final (host, saved) = await _startHost();
+      addTearDown(host.close);
+      final guest = PairGuest(self: _guest(), pollInterval: const Duration(milliseconds: 20), caps: const []);
+      final session = await guest.connect(_invite(host));
+      expect(host.state.value.legacyPeer, isTrue);
+      expect(host.state.value.hostConfirmed, isTrue);
+      expect(saved, isEmpty);
+      await guest.confirm(session); // its "Same, pair"
+      expect(saved.single.$1.fingerprint, _guestFp);
+    });
+
+    test('QR pairing: the phone notices an older computer (it then shows the digits to compare there)', () async {
+      final (host, _) = await _startHost(caps: const []);
+      addTearDown(host.close);
+      final session = await PairGuest(self: _guest()).connect(_invite(host));
+      expect(session.hostAutoQr, isFalse);
     });
 
     test('a phone pinned to another fingerprint refuses to talk (impostor computer)', () async {
@@ -234,7 +271,7 @@ void main() {
       expect(host.state.value.failure, isNull);
     });
 
-    test('"different" on the computer ends it on the phone too', () async {
+    test('"Cancel" on the computer ends it on the phone too', () async {
       final (host, saved) = await _startHost();
       addTearDown(host.close);
       final guest = PairGuest(self: _guest(), pollInterval: const Duration(milliseconds: 20));
@@ -273,14 +310,69 @@ void main() {
       expect(host.state.value.peer!.alias, '客厅电脑');
       expect(session.invite, isNull);
 
+      // Each person types the code shown on the other computer
+      expect(await guest.checkCode(session, host.state.value.sas!.hostCode), PairCodeResult.match);
       final confirming = guest.confirm(session);
       await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(saved, isEmpty, reason: 'nothing may be saved before this computer confirms');
-      await host.confirm();
+      expect(saved, isEmpty, reason: 'nothing may be saved before the code is typed on this computer too');
+      expect(host.checkCode(session.sas.guestCode), PairCodeResult.match);
       await confirming;
       expect(host.state.value.stage, PairHostStage.paired);
       expect(saved.single.$1.fingerprint, 'CE' * 32);
       expect(saved.single.$3, session.secret);
+    });
+
+    test('computer to computer: three wrong codes on this computer cancel the pairing on both sides', () async {
+      final (host, saved) = await _startHost();
+      addTearDown(host.close);
+      final session = await _nearby(host);
+      final guest = PairGuest(self: _otherComputer(), pollInterval: const Duration(milliseconds: 20));
+      expect(await guest.checkCode(session, session.sas.hostCode), PairCodeResult.match);
+      final confirming = expectLater(guest.confirm(session), _fails(PairFailure.rejectedByPeer));
+      final wrong = _otherCode(session.sas.guestCode);
+      expect(host.checkCode(wrong), PairCodeResult.wrong);
+      expect(host.checkCode(wrong), PairCodeResult.wrong);
+      expect(host.checkCode(wrong), PairCodeResult.exhausted);
+      expect(host.state.value.failure, PairFailure.codeMismatch);
+      await confirming;
+      expect(saved, isEmpty);
+    });
+
+    test('computer to computer: three wrong codes on the other computer cancel it here too', () async {
+      final (host, saved) = await _startHost();
+      addTearDown(host.close);
+      final session = await _nearby(host);
+      final guest = PairGuest(self: _otherComputer());
+      final wrong = _otherCode(session.sas.hostCode);
+      expect(await guest.checkCode(session, wrong), PairCodeResult.wrong);
+      expect(await guest.checkCode(session, wrong), PairCodeResult.wrong);
+      expect(await guest.checkCode(session, wrong), PairCodeResult.exhausted);
+      expect(host.state.value.failure, PairFailure.rejectedByPeer);
+      expect(await guest.checkCode(session, session.sas.hostCode), PairCodeResult.exhausted, reason: 'too late for the right code');
+      expect(saved, isEmpty);
+    });
+
+    test('computer to computer: confirming without typing the code is refused', () async {
+      final (host, _) = await _startHost();
+      addTearDown(host.close);
+      final session = await _nearby(host);
+      await expectLater(PairGuest(self: _otherComputer()).confirm(session), _fails(PairFailure.protocol));
+      expect(host.state.value.guestConfirmed, isFalse);
+    });
+
+    test('computer to computer: an older computer is refused both ways, so there is no one-click fallback', () async {
+      final (host, _) = await _startHost();
+      addTearDown(host.close);
+      // an older computer connecting to this one
+      await expectLater(
+        PairGuest(self: _otherComputer(), caps: const []).connectNearby(host: '127.0.0.1', port: host.port!, fingerprint: _hostFp),
+        _fails(PairFailure.outdated),
+      );
+      expect(host.state.value.request, isNull, reason: 'it does not even get an "Accept" prompt');
+      // this computer connecting to an older one
+      final (old, _) = await _startHost(caps: const []);
+      addTearDown(old.close);
+      await expectLater(_nearby(old), _fails(PairFailure.outdated));
     });
 
     test('computer to computer: someone pretending to be that computer is refused (pinned fingerprint)', () async {
@@ -328,10 +420,12 @@ void main() {
         transcript: real.transcript,
         secret: real.secret,
         macKey: randomBytes(32),
-      );
+        nearby: true,
+      )..codeChecked = true;
       await expectLater(PairGuest(self: _otherComputer('DD' * 32)).confirm(forged), throwsA(isA<PairException>()));
       expect(host.state.value.guestConfirmed, isFalse);
-      await host.confirm();
+      expect(host.checkCode(real.sas.guestCode), PairCodeResult.match);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(saved, isEmpty, reason: 'the other computer has not confirmed yet');
     });
 
@@ -378,9 +472,7 @@ void main() {
       await stranger; // that computer gets "busy" the next time it asks
       expect(host.state.value.intruder, isFalse);
 
-      final confirming = phone.confirm(session);
-      await host.confirm();
-      await confirming;
+      await phone.confirm(session);
       expect(saved.single.$1.fingerprint, _guestFp, reason: 'the phone is saved, not that computer');
     });
 
@@ -465,7 +557,7 @@ void main() {
       );
     });
 
-    test('"different" on the phone ends it on the computer', () async {
+    test('"Cancel" on the phone ends it on the computer', () async {
       final (host, saved) = await _startHost();
       addTearDown(host.close);
       final guest = PairGuest(self: _guest());
@@ -473,7 +565,6 @@ void main() {
       await guest.reject(session);
       expect(host.state.value.stage, PairHostStage.failed);
       expect(host.state.value.failure, PairFailure.rejectedByPeer);
-      await host.confirm();
       expect(saved, isEmpty);
     });
   });

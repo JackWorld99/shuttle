@@ -1469,27 +1469,13 @@ class Translations$shareme$pair$zh_CN extends Translations$shareme$pair$en {
   @override
   String startFailed({required Object error}) => '配对没能开始：${error}';
   @override
-  String get verifyTitle => '核对配对印';
-  @override
-  String get verifyHost => '看手机屏幕：上面的印和 12 位数字和这里一模一样，才点「一样，配对」。不一样，说明有别的设备抢先用了这个二维码。';
-  @override
-  String get verifyGuest => '看电脑屏幕：上面的印和 12 位数字和这里一模一样，才点「一样，配对」。';
-  @override
-  String peerLine({required Object name, required Object model}) => '${name} · ${model}';
-  @override
-  String get sameHost => '一样，配对';
-  @override
-  String get sameGuest => '一样，配对';
-  @override
-  String get different => '不一样';
-  @override
   String get waitPhone => '等手机上确认…';
   @override
   String get waitComputer => '等电脑上确认…';
   @override
   String get nameIt => '给它起个名字';
   @override
-  String get intruder => '又有一台设备扫了这个二维码。如果正在核对的不是你的手机，请点「不一样」。';
+  String get intruder => '又有一台设备扫了这个二维码。如果正在核对的不是你的手机，请点「取消」。';
   @override
   String get doneTitle => '已配对';
   @override
@@ -1503,9 +1489,9 @@ class Translations$shareme$pair$zh_CN extends Translations$shareme$pair$en {
   @override
   String get failRejectedHere => '已取消，没有配对。';
   @override
-  String get failRejectedPeer => '对方点了「不一样」，没有配对。';
+  String get failRejectedPeer => '对方取消了，没有配对。';
   @override
-  String get failUsed => '这个二维码已经被另一台设备用过了。请在电脑上换一个二维码再扫。';
+  String get failUsed => '这个二维码已经被另一台设备用过了。如果不是你用的，请在电脑上移除不认识的设备，再换一个二维码扫。';
   @override
   String get failExpired => '二维码过期了，请在电脑上换一个再扫。';
   @override
@@ -1545,12 +1531,6 @@ class Translations$shareme$pair$zh_CN extends Translations$shareme$pair$en {
   @override
   String get nearbyAddPlain => '对方不是 Shuttle？直接添加，不核对';
   @override
-  String verifyNearby({required Object name}) => '看 ${name} 的屏幕：上面的印和 12 位数字和这里一模一样，才点「一样，配对」。';
-  @override
-  String verifyHostNearby({required Object name}) => '看 ${name} 的屏幕：上面的印和 12 位数字和这里一模一样，才点「一样，配对」。不一样，说明有别的设备在冒充它。';
-  @override
-  String waitPeer({required Object name}) => '等 ${name} 上确认…';
-  @override
   String get tryAgainShort => '再试一次';
   @override
   String failNearbyBusy({required Object name}) => '${name} 正在和别的设备配对，请稍后再试。';
@@ -1573,7 +1553,33 @@ class Translations$shareme$pair$zh_CN extends Translations$shareme$pair$en {
   @override
   String get failDeclined => '对方没有接受，没有配对。';
   @override
-  String intruderNearby({required Object name}) => '有手机扫了这个二维码，但这台电脑正在和 ${name} 核对。如果你要配的是那台手机，请点「不一样」，再换一个二维码给它扫。';
+  String intruderNearby({required Object name}) => '有手机扫了这个二维码，但这台电脑正在和 ${name} 核对。如果你要配的是那台手机，请点「取消」，再换一个二维码给它扫。';
+  @override
+  String get finishing => '正在完成配对…';
+  @override
+  String get legacyHost => '电脑上的 Shuttle 是旧版，需要在电脑上核对这 12 位数字：一样就在电脑上点「一样，配对」。';
+  @override
+  String get legacyGuest => '手机上的 Shuttle 是旧版，需要在手机上核对这 12 位数字：一样就在手机上点「一样，配对」。';
+  @override
+  String get notMine => '不是我的设备？移除';
+  @override
+  String intruderAfter({required Object name}) => '另一台设备也想用这个二维码配对，被拒绝了。如果「${name}」不是你的设备，请点下面的「不是我的设备？移除」。';
+  @override
+  String typedShow({required Object name}) => '在 ${name} 上输入';
+  @override
+  String typedEnter({required Object name}) => '输入 ${name} 上显示的数字';
+  @override
+  String get typedHint => '互相输入一遍，才能确认连上的就是它，而不是冒充它的设备。';
+  @override
+  String typedWrong({required Object name, required Object n}) => '不对，再看看 ${name} 的屏幕（还能试 ${n} 次）';
+  @override
+  String typedChecked({required Object name}) => '这边对上了。在 ${name} 上也输入后就完成了。';
+  @override
+  String get failOutdated => '对方的 Shuttle 是旧版，请先更新再配对。';
+  @override
+  String failNearbyOutdated({required Object name}) => '${name} 上的 Shuttle 是旧版，请先在它上面更新，再配对。';
+  @override
+  String failCodeMismatch({required Object n}) => '连续 ${n} 次没对上，配对已取消。如果确定输入无误，可能有别的设备在冒充，先别在这个网络上配对。';
 }
 
 // Path: shareme.settings

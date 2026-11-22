@@ -74,9 +74,11 @@ The HTTP server and client are Rust. `packages/core/src/http/server/` implements
 decision channel, `FileUpload` with a byte stream, …) and the app answers them. Only **one upload session** is active at a time.
 
 TLS uses per-device certificates with **mandatory client certificates**; a peer's identity is the uppercase-hex SHA-256 of its
-certificate. Shuttle builds on this: "My devices" are pinned to that fingerprint, pairing (QR code or computer-to-computer)
-derives a shared secret and shows a 12-digit check on both screens (`app/lib/util/shareme_pairing/`), and only devices with a
-pairing record are accepted automatically.
+certificate. Shuttle builds on this: "My devices" are pinned to that fingerprint, pairing derives a shared secret
+(`app/lib/util/shareme_pairing/`), and only devices with a pairing record are accepted automatically. QR pairing is authenticated
+by the code itself (certificate fingerprint + one-time key). Computer-to-computer pairing is authenticated by each person typing
+half of a 12-digit check derived from the handshake transcript (commit-then-reveal), so a man in the middle can't make both halves
+match.
 
 Save targets are decided in Dart (`prepareFileSaveTarget`) and written by Rust: a path, or an Android file descriptor from the
 `org.localsend.localsend_app/localsend` method channel. On Android 10+ photos and videos are written straight into a pending

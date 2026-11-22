@@ -20,7 +20,7 @@ import 'package:refena_flutter/refena_flutter.dart';
 
 final _logger = Logger('PairNearby');
 
-enum _Stage { connecting, verifying, waiting, done, failed }
+enum _Stage { connecting, verifying, done, failed }
 
 /// PC-to-PC pairing: opened by clicking "Pair" next to another PC under "Nearby" on the home page.
 ///
@@ -31,8 +31,9 @@ enum _Stage { connecting, verifying, waiting, done, failed }
 /// - The other PC also clicked "Pair" (otherwise both would just wait for each other): the certificate fingerprints decide
 ///   the roles. The PC with the smaller fingerprint also waits on the fixed port, accepting only the PC it wants to pair
 ///   with; the larger one connects as usual. The two PCs always get opposite results, so one waits and the other connects.
-/// Verification works like QR pairing: both show the same pairing seal and 12 digits, and only when both click "Same" do
-/// they add each other to "My devices".
+/// Checking: each computer shows 6 digits and asks for the 6 digits shown on the other one ([TypedCodePanel]); only when both
+/// codes were typed correctly do they add each other to "My devices". A peer with an older Shuttle is refused
+/// ([PairFailure.outdated]).
 /// A peer that isn't Shuttle (e.g. the official LocalSend) can never connect, so there is an "add without checking" fallback.
 class SmPairNearbyPage extends StatefulWidget {
   final Device device;
@@ -224,14 +225,28 @@ class _SmPairNearbyPageState extends State<SmPairNearbyPage> with Refena {
     }
   }
 
-  Future<void> _same() async {
-    setState(() => _stage = _Stage.waiting);
+  /// The code typed here (read from the other computer's screen)
+  Future<PairCodeResult> _submitCode(String code) async {
     if (_asHost) {
-      // Saved as soon as the peer also clicks "Same"; _onHostState switches to the done page on "paired"
-      await _host?.confirm();
-      return;
+      // A match confirms this side; saved as soon as the peer's code matches too (_onHostState switches to the done page on
+      // "paired", or to the failure on too many wrong codes)
+      return _host?.checkCode(code) ?? PairCodeResult.exhausted;
     }
     final session = _session!;
+    final result = await _guest().checkCode(session, code);
+    switch (result) {
+      case PairCodeResult.match:
+        unawaited(_confirmGuest(session));
+      case PairCodeResult.exhausted:
+        _fail(PairFailure.codeMismatch);
+      case PairCodeResult.wrong:
+        break;
+    }
+    return result;
+  }
+
+  /// This side's code matched: wait for the other computer's code to match too, then save
+  Future<void> _confirmGuest(PairGuestSession session) async {
     try {
       await _guest().confirm(session);
       await savePairing(ref, session.peer, session.address.host, session.secret, customName: _name.text, method: pairMethodNearby);
@@ -243,7 +258,14 @@ class _SmPairNearbyPageState extends State<SmPairNearbyPage> with Refena {
     }
   }
 
-  Future<void> _different() async {
+  void _finish() {
+    final peer = _peer;
+    if (peer != null) renameMyDevice(ref, peer.fingerprint, _name.text, ownName: peer.alias);
+    Navigator.of(context).pop();
+  }
+
+  /// "Cancel" while checking
+  Future<void> _cancel() async {
     if (_asHost) {
       _host?.reject();
       _fail(PairFailure.rejectedHere);
@@ -283,6 +305,7 @@ class _SmPairNearbyPageState extends State<SmPairNearbyPage> with Refena {
       PairFailure.unreachable => s.failNearbyUnreachable(name: _peerName),
       PairFailure.expired => s.failNearbyExpired(name: _peerName),
       PairFailure.declined => s.failNearbyDeclined(name: _peerName),
+      PairFailure.outdated => s.failNearbyOutdated(name: _peerName),
       _ => pairFailureText(f),
     };
   }
@@ -299,7 +322,12 @@ class _SmPairNearbyPageState extends State<SmPairNearbyPage> with Refena {
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
             child: switch (_stage) {
               _Stage.connecting => _connectingView(context),
-              _Stage.verifying || _Stage.waiting => _verifyView(context),
+              _Stage.verifying => TypedCodePanel(
+                myCode: _asHost ? _sas!.hostCode : _sas!.guestCode,
+                peerName: _peer?.alias ?? _peerName,
+                onSubmit: _submitCode,
+                onCancel: () async => _cancel(),
+              ),
               _Stage.done => _doneView(context),
               _Stage.failed => Padding(
                 padding: const EdgeInsets.only(top: 60),
@@ -354,67 +382,6 @@ class _SmPairNearbyPageState extends State<SmPairNearbyPage> with Refena {
     );
   }
 
-  Widget _verifyView(BuildContext context) {
-    final c = context.sm;
-    final s = t.shareme.pair;
-    final peer = _peer!;
-    final waiting = _stage == _Stage.waiting;
-    return Column(
-      children: [
-        Text(
-          s.verifyNearby(name: peer.alias),
-          style: ShareMeText.body.copyWith(color: c.ink2),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 24),
-        PairCheckPanel(sas: _sas!),
-        const SizedBox(height: 10),
-        Text(
-          peer.model == null ? peer.alias : s.peerLine(name: peer.alias, model: peer.model!),
-          style: ShareMeText.meta.copyWith(color: c.ink2),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 18),
-        TextField(
-          controller: _name,
-          enabled: !waiting,
-          maxLength: 32,
-          decoration: InputDecoration(labelText: s.nameIt, counterText: ''),
-        ),
-        const SizedBox(height: 22),
-        if (waiting)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-              const SizedBox(width: 10),
-              Text(
-                s.waitPeer(name: peer.alias),
-                style: ShareMeText.body.copyWith(color: c.ink2),
-              ),
-            ],
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () async => _different(),
-                  style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(ShareMeSize.buttonH)),
-                  child: Text(s.different),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: FilledButton(onPressed: () async => _same(), child: Text(s.sameGuest)),
-              ),
-            ],
-          ),
-      ],
-    );
-  }
-
   Widget _doneView(BuildContext context) {
     final c = context.sm;
     final s = t.shareme.pair;
@@ -439,8 +406,15 @@ class _SmPairNearbyPageState extends State<SmPairNearbyPage> with Refena {
           style: ShareMeText.body.copyWith(color: c.ink2),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 24),
-        FilledButton(onPressed: () => Navigator.of(context).pop(), child: Text(s.done)),
+        const SizedBox(height: 18),
+        TextField(
+          controller: _name,
+          maxLength: 32,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(labelText: s.nameIt, counterText: ''),
+        ),
+        const SizedBox(height: 20),
+        FilledButton(onPressed: _finish, child: Text(s.done)),
       ],
     );
   }
