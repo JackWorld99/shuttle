@@ -8,6 +8,7 @@ import 'package:localsend_app/provider/persistence_provider.dart';
 import 'package:localsend_app/util/shareme_format.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart' show isTailscaleIp;
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
+import 'package:localsend_app/widget/shareme/sm_sheets.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 
@@ -22,10 +23,9 @@ import 'package:refena_flutter/refena_flutter.dart';
 /// then calls [onShareLink] and returns null.
 Future<Device?> showSendTargetSheet(BuildContext context, {required int count, required int bytes, Future<void> Function()? onShareLink}) async {
   var link = false;
-  final device = await showModalBottomSheet<Device>(
-    context: context,
-    useSafeArea: true,
-    isScrollControlled: true,
+  final device = await showSmSheet<Device>(
+    context,
+    scroll: false,
     builder: (_) => _SendTargetSheet(count: count, bytes: bytes, onShareLink: onShareLink == null ? null : () => link = true),
   );
   if (link && onShareLink != null) {
@@ -157,7 +157,6 @@ class SendTargetList extends StatelessWidget {
             deviceType: nearby.firstWhereOrNull((d) => d.fingerprint == f.fingerprint)?.deviceType,
             size: 40,
             mine: true,
-            badgeRing: c.bg,
           ),
           name: f.alias,
           status: viaTailscale(f) ? t.shareme.home.viaTailscale : t.shareme.home.sameWifi,
@@ -189,7 +188,10 @@ class SendTargetList extends StatelessWidget {
     return Material(
       // The list group inside the sheet uses the bg color to stand apart from the sheet's group background
       color: c.bg,
-      borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: c.line),
+        borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
+      ),
       clipBehavior: Clip.antiAlias,
       child: rows.isEmpty
           ? Padding(
@@ -206,7 +208,8 @@ class SendTargetList extends StatelessWidget {
   }
 }
 
-/// The "Send to X" primary button; disabled and showing "Choose a device first" while no device is selected.
+/// The "Send to X" primary button; disabled and showing "Choose a device first" while no device is selected (just "Send" while there
+/// is nothing to choose from).
 class SendToButton extends StatelessWidget {
   final Device? device;
   final VoidCallback onPressed;
@@ -220,12 +223,19 @@ class SendToButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.sm;
+    final device = this.device;
+    final none = context.watch(sendTabVmProvider).nearbyDevices.isEmpty;
+    final text = device != null
+        ? label ?? t.shareme.send.sendTo(name: device.alias)
+        : none
+        ? t.shareme.text.send
+        : t.shareme.send.chooseDevice;
     return FilledButton(
       onPressed: device == null || !enabled ? null : onPressed,
       style: FilledButton.styleFrom(disabledBackgroundColor: c.tonal, disabledForegroundColor: c.ink3),
       child: FittedBox(
         fit: BoxFit.scaleDown,
-        child: Text(device == null ? t.shareme.send.chooseDevice : (label ?? t.shareme.send.sendTo(name: device!.alias)), maxLines: 1),
+        child: Text(text, maxLines: 1),
       ),
     );
   }
@@ -255,41 +265,47 @@ class _TargetRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.sm;
     final enabled = onChanged != null;
-    return InkWell(
-      onTap: enabled ? () => onChanged!(value) : null,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
-        child: Row(
-          children: [
-            seal,
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: ShareMeText.deviceNameSm.copyWith(color: enabled ? c.ink : c.ink3),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    status,
-                    style: ShareMeText.meta.copyWith(color: okStatus ? c.ok : c.ink2),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+    return Semantics(
+      container: true,
+      inMutuallyExclusiveGroup: true,
+      checked: value == groupValue,
+      enabled: enabled,
+      child: InkWell(
+        onTap: enabled ? () => onChanged!(value) : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+          child: Row(
+            children: [
+              seal,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: ShareMeText.deviceNameSm.copyWith(color: enabled ? c.ink : c.ink3),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      status,
+                      style: ShareMeText.meta.copyWith(color: okStatus ? c.ok : c.ink2),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            // Custom-drawn radio mark (Radio's groupValue / onChanged are deprecated in newer Flutter)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Icon(
-                value == groupValue ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                size: 22,
-                color: !enabled ? c.line : (value == groupValue ? c.ink : c.ink3),
+              // Custom-drawn radio mark (Radio's groupValue / onChanged are deprecated in newer Flutter)
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Icon(
+                  value == groupValue ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  size: 22,
+                  color: !enabled ? c.line : (value == groupValue ? c.accent : c.ink3),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -298,9 +314,9 @@ class _TargetRow extends StatelessWidget {
 
 /// Opened from the home "Send to X ▾": pick another online "My devices" entry. Returns its fingerprint (stored by the caller as the last target).
 Future<String?> showChooseMyDeviceSheet(BuildContext context, {required String? current}) {
-  return showModalBottomSheet<String>(
-    context: context,
-    useSafeArea: true,
+  return showSmSheet<String>(
+    context,
+    maxWidth: 400,
     builder: (context) {
       final c = context.sm;
       final vm = context.watch(sendTabVmProvider);

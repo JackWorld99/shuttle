@@ -5,7 +5,6 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/config/init.dart';
 import 'package:localsend_app/config/shareme_theme.dart';
-import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/state/network_state.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
@@ -22,7 +21,10 @@ import 'package:localsend_app/util/native/channel/android_channel.dart' show lis
 import 'package:localsend_app/util/native/cross_file_converters.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/widget/responsive_builder.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:localsend_app/widget/shareme/desktop_layout.dart';
+import 'package:localsend_app/widget/shareme/motion.dart';
+import 'package:localsend_app/widget/shareme/warm_up.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
@@ -69,6 +71,9 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with Refena {
   bool _dragAndDropIndicator = false;
+
+  /// Until the first ChangeTabAction below, the controller may still hold the tab an earlier home page was on
+  bool _tabReady = false;
   AppLifecycleListener? _lifecycle;
   StreamSubscription<NotifierEvent<NetworkState>>? _networkWatch;
   Timer? _rescanSoon;
@@ -115,6 +120,7 @@ class _HomePageState extends State<HomePage> with Refena {
           );
         }
       });
+      _tabReady = true;
       ref.redux(homePageControllerProvider).dispatch(ChangeTabAction(widget.initialTab));
       await postInit(context, ref, widget.appStart);
       await _runPendingAction(); // Shuttle: cold start from the "send clipboard" quick settings tile
@@ -176,6 +182,7 @@ class _HomePageState extends State<HomePage> with Refena {
   Widget build(BuildContext context) {
     Translations.of(context); // rebuild on locale change
     final vm = context.watch(homePageControllerProvider);
+    final tab = _tabReady ? vm.currentTab : widget.initialTab;
     // Shuttle: a small dot on the "Settings" icon when a new version is downloaded (or waiting to be downloaded)
     final updateDot = context.watch(smUpdateProvider.select((s) => s.hasNewVersion));
 
@@ -225,18 +232,20 @@ class _HomePageState extends State<HomePage> with Refena {
       },
       child: ResponsiveBuilder(
         builder: (sizingInformation) {
-          return Scaffold(
+          // The ambient backdrop fills the whole screen (phone and desktop) and shows through the transparent scaffold, navigation
+          // bar and navigation rail
+          final scaffold = Scaffold(
+            backgroundColor: Colors.transparent,
             body: Row(
               children: [
                 if (!sizingInformation.isMobile)
                   NavigationRail(
-                    selectedIndex: vm.currentTab.index,
+                    selectedIndex: tab.index,
                     onDestinationSelected: (index) => vm.changeTab(HomeTab.values[index]),
                     // Shuttle desktop: 76-wide navigation rail with labels under the icons (rail 76 | device column 300 | content)
                     extended: sizingInformation.isDesktop && !useDesktopLayout(context),
                     labelType: useDesktopLayout(context) ? NavigationRailLabelType.all : null,
                     minWidth: 76,
-                    backgroundColor: Theme.of(context).cardColorWithElevation,
                     leading: sizingInformation.isDesktop && !useDesktopLayout(context)
                         ? Column(
                             children: [
@@ -249,6 +258,8 @@ class _HomePageState extends State<HomePage> with Refena {
                               const SizedBox(height: 20),
                             ],
                           )
+                        : useDesktopLayout(context)
+                        ? const Padding(padding: EdgeInsets.only(top: 6, bottom: 12), child: SmAppLogo(size: 40))
                         : null,
                     destinations: HomeTab.values.map((tab) {
                       return NavigationRailDestination(
@@ -262,9 +273,8 @@ class _HomePageState extends State<HomePage> with Refena {
                     left: sizingInformation.isMobile,
                     child: Stack(
                       children: [
-                        PageView(
-                          controller: vm.controller,
-                          physics: const NeverScrollableScrollPhysics(),
+                        SmTabSwitcher(
+                          index: tab.index,
                           children: const [
                             TransferTab(),
                             SmHistoryPage(), // Shuttle: history page
@@ -299,7 +309,7 @@ class _HomePageState extends State<HomePage> with Refena {
                       border: Border(top: BorderSide(color: context.sm.line)),
                     ),
                     child: NavigationBar(
-                      selectedIndex: vm.currentTab.index,
+                      selectedIndex: tab.index,
                       onDestinationSelected: (index) => vm.changeTab(HomeTab.values[index]),
                       destinations: HomeTab.values.map((tab) {
                         return NavigationDestination(
@@ -310,6 +320,10 @@ class _HomePageState extends State<HomePage> with Refena {
                     ),
                   )
                 : null,
+          );
+          return SmAmbient(
+            beneath: checkPlatform([TargetPlatform.windows]) ? const SmWarmUp() : null,
+            child: scaffold,
           );
         },
       ),

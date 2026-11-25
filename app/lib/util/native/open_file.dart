@@ -54,7 +54,11 @@ Future<void> _showRunnableInFolder(BuildContext context, String filePath) async 
       ],
     ),
   );
-  if (show != true) return;
+  if (show == true) await showInFolder(filePath);
+}
+
+/// Opens the folder of [filePath] with the file selected (Windows).
+Future<void> showInFolder(String filePath) async {
   final normalized = filePath.replaceAll('/', '\\');
   final cut = normalized.lastIndexOf('\\');
   if (cut <= 0) return;

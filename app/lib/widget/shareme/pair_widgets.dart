@@ -9,6 +9,8 @@ import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_protocol.dart';
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
 import 'package:localsend_app/widget/shareme/seal.dart';
+import 'package:localsend_app/widget/shareme/sm_card.dart';
+import 'package:localsend_app/widget/shareme/transfer_scene.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -66,35 +68,40 @@ class _TypedCodePanelState extends State<TypedCodePanel> {
     final codeStyle = ShareMeText.data.copyWith(color: c.ink, fontSize: 34, letterSpacing: 6, fontWeight: FontWeight.w600);
     return Column(
       children: [
-        Text(
-          s.typedShow(name: widget.peerName),
-          style: ShareMeText.body.copyWith(color: c.ink2),
-          textAlign: TextAlign.center,
+        // This computer's half
+        SmCard(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                s.typedShow(name: widget.peerName),
+                style: ShareMeText.body.copyWith(color: c.ink2),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(widget.myCode, style: codeStyle),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
-        Text(widget.myCode, style: codeStyle),
-        const SizedBox(height: 28),
-        Text(
-          s.typedEnter(name: widget.peerName),
-          style: ShareMeText.body.copyWith(color: c.ink2),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: 240,
-          child: TextField(
-            controller: _input,
-            autofocus: true,
-            enabled: !_matched,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            style: codeStyle.copyWith(fontSize: 28),
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
-            decoration: const InputDecoration(hintText: '000000'),
-            onChanged: (v) {
-              if (v.length == 6) unawaited(_submit());
-            },
-            onSubmitted: (_) => unawaited(_submit()),
+        const SizedBox(height: 14),
+        // The other computer's half
+        SmCard(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                s.typedEnter(name: widget.peerName),
+                style: ShareMeText.body.copyWith(color: c.ink2),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              _CodeCells(controller: _input, enabled: !_matched, onChanged: (v) => v.length == 6 ? unawaited(_submit()) : null, onSubmitted: _submit),
+            ],
           ),
         ),
         if (_wrong > 0 && !_matched) ...[
@@ -121,7 +128,10 @@ class _TypedCodePanelState extends State<TypedCodePanel> {
             ],
           )
         else
-          TextButton(onPressed: widget.onCancel, child: Text(t.shareme.settings.cancel)),
+          TextButton(
+            onPressed: widget.onCancel,
+            child: Text(t.shareme.settings.cancel, style: ShareMeText.label.copyWith(color: c.ink2)),
+          ),
         const SizedBox(height: 12),
         Text(
           s.typedHint,
@@ -129,6 +139,99 @@ class _TypedCodePanelState extends State<TypedCodePanel> {
           textAlign: TextAlign.center,
         ),
       ],
+    );
+  }
+}
+
+/// Six cells for six digits. The real text field lies invisibly on top, so typing, pasting and screen readers work as usual.
+class _CodeCells extends StatefulWidget {
+  final TextEditingController controller;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+  final Future<void> Function() onSubmitted;
+
+  const _CodeCells({required this.controller, required this.enabled, required this.onChanged, required this.onSubmitted});
+
+  @override
+  State<_CodeCells> createState() => _CodeCellsState();
+}
+
+class _CodeCellsState extends State<_CodeCells> {
+  final _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.sm;
+    return SizedBox(
+      height: 58,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          ExcludeSemantics(
+            child: ListenableBuilder(
+              listenable: Listenable.merge([widget.controller, _focus]),
+              builder: (context, _) {
+                final digits = widget.controller.text;
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < 6; i++) ...[
+                      if (i > 0) SizedBox(width: i == 3 ? 16 : 7),
+                      Flexible(
+                        child: AnimatedContainer(
+                          duration: ShareMeMotion.short,
+                          constraints: const BoxConstraints(maxWidth: 46),
+                          height: 58,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: c.bg,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: _focus.hasFocus && i == digits.length.clamp(0, 5) ? c.accent : c.line,
+                              width: _focus.hasFocus && i == digits.length.clamp(0, 5) ? 2 : 1,
+                            ),
+                          ),
+                          child: AnimatedScale(
+                            scale: i < digits.length ? 1 : 0.6,
+                            duration: ShareMeMotion.short,
+                            curve: Curves.easeOutBack,
+                            child: Text(
+                              i < digits.length ? digits[i] : '',
+                              style: ShareMeText.data.copyWith(color: c.ink, fontSize: 26, fontWeight: FontWeight.w700, height: 1),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ),
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0,
+              child: TextField(
+                controller: widget.controller,
+                focusNode: _focus,
+                autofocus: true,
+                enabled: widget.enabled,
+                showCursor: false,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+                onChanged: widget.onChanged,
+                onSubmitted: (_) => unawaited(widget.onSubmitted()),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -157,53 +260,57 @@ class PairCheckPanel extends StatelessWidget {
   }
 }
 
-/// Paired screen: the two devices' avatars joined by an ink line, with their names below
+/// Paired screen: the two devices, joined; the same picture as a finished transfer
 class PairedDuo extends StatelessWidget {
-  final String myFingerprint;
-  final String myName;
   final String theirFingerprint;
-  final String theirName;
 
-  const PairedDuo({required this.myFingerprint, required this.myName, required this.theirFingerprint, required this.theirName, super.key});
+  const PairedDuo({required this.theirFingerprint, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Most pairs are one phone + one computer: if the peer's type is unknown, draw the opposite of this device's type
+    final myType = checkPlatformIsDesktop() ? DeviceType.desktop : DeviceType.mobile;
+    final theirGuess = myType == DeviceType.desktop ? DeviceType.mobile : DeviceType.desktop;
+    return SizedBox(
+      width: 300,
+      child: TransferScene(
+        from: DeviceAvatar(deviceType: myType, size: 76, mine: true),
+        to: DeviceAvatar(deviceType: knownDeviceType(theirFingerprint) ?? theirGuess, size: 76, mine: true),
+        avatarSize: 76,
+        phase: ScenePhase.done,
+        arriveAfter: const Duration(milliseconds: 250),
+      ),
+    );
+  }
+}
+
+/// Paired screen: a field to rename the peer, and the "Done" button across the whole width
+class PairNameForm extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onChanged;
+  final VoidCallback onDone;
+
+  const PairNameForm({required this.controller, required this.onChanged, required this.onDone, super.key});
 
   @override
   Widget build(BuildContext context) {
     final c = context.sm;
-    // Most pairs are one phone + one computer: if the peer's type is unknown, draw the opposite of this device's type
-    final myType = checkPlatformIsDesktop() ? DeviceType.desktop : DeviceType.mobile;
-    final theirGuess = myType == DeviceType.desktop ? DeviceType.mobile : DeviceType.desktop;
-    Widget side(String fp, String name) => SizedBox(
-      width: 120,
-      child: Column(
-        children: [
-          DeviceAvatar(
-            deviceType: fp == myFingerprint ? myType : (knownDeviceType(fp) ?? theirGuess),
-            size: 72,
-            mine: true,
-            verified: fp != myFingerprint,
-            badgeRing: c.bg,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            name,
-            style: ShareMeText.deviceNameSm.copyWith(color: c.ink),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final s = t.shareme.pair;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        side(myFingerprint, myName),
         Padding(
-          padding: const EdgeInsets.only(top: 35),
-          child: Container(width: 48, height: 2, color: c.ink),
+          padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+          child: Text(s.nameIt, style: ShareMeText.section.copyWith(color: c.ink2)),
         ),
-        side(theirFingerprint, theirName),
+        TextField(
+          controller: controller,
+          maxLength: 32,
+          onChanged: (_) => onChanged(),
+          decoration: const InputDecoration(counterText: ''),
+        ),
+        const SizedBox(height: 20),
+        FilledButton(onPressed: onDone, child: Text(s.done)),
       ],
     );
   }

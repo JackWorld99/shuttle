@@ -41,7 +41,7 @@ Share → tap your PC → done. The original file, every byte checked.
 | 📋 **Copy here, paste there** | Press <kbd>Ctrl</kbd>+<kbd>V</kbd> on your PC to send the clipboard to your phone. Share a link from your phone and it's ready to paste on your PC. |
 | 🔒 **Private by design** | No account, no cloud, no tracking, no ads. Transfers are encrypted, and only the device that scans the QR code on your screen can pair, so no one can sneak in. |
 | 🖥️ **Always ready** | Shuttle waits quietly in the tray, can start with Windows, and keeps itself up to date with signed updates. |
-| 🌍 **Works away from home** | Add [Tailscale](https://tailscale.com) on both devices and it works over mobile data too — still without anyone's server in between. |
+| 🌍 **Works away from home** | Add [Tailscale](https://tailscale.com) on both devices and it works over mobile data too — still end-to-end encrypted. |
 
 ## How it compares
 

@@ -1,7 +1,9 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/config/shareme_theme.dart';
-import 'package:localsend_app/gen/assets.gen.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/favorite_device.dart';
 import 'package:localsend_app/model/persistence/receive_history_entry.dart';
@@ -29,12 +31,17 @@ import 'package:localsend_app/util/native/file_picker.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/shareme_format.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart' show isTailscaleIp;
+import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:localsend_app/widget/shareme/confirm_remove_device.dart';
 import 'package:localsend_app/widget/shareme/desktop_layout.dart';
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
 import 'package:localsend_app/widget/shareme/film_strip.dart';
+import 'package:localsend_app/widget/shareme/motion.dart';
+import 'package:localsend_app/widget/shareme/progress_bar.dart';
 import 'package:localsend_app/widget/shareme/send_target_sheet.dart';
 import 'package:localsend_app/widget/shareme/send_text_sheet.dart';
+import 'package:localsend_app/widget/shareme/sm_card.dart';
+import 'package:localsend_app/widget/shareme/sm_sheets.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/file_status.dart';
 import 'package:localsend_isolates/model/session_status.dart';
@@ -56,14 +63,14 @@ class TransferTab extends StatefulWidget {
   State<TransferTab> createState() => _TransferTabState();
 }
 
-class _TransferTabState extends State<TransferTab> with Refena {
+class _TransferTabState extends State<TransferTab> with Refena, SmTabState {
   /// Offline devices in "My devices": when some devices are online and 2 or more are offline, the offline ones collapse
   /// into one "N more offline" row by default.
   bool _showOffline = false;
 
+  /// Looks for devices if none are known
   @override
-  void initState() {
-    super.initState();
+  void onTabShown() {
     ensureRef((ref) async {
       await ref.global.dispatchAsync(SendTabInitAction(context));
     });
@@ -92,9 +99,44 @@ class _TransferTabState extends State<TransferTab> with Refena {
       await context.push(() => SmSendPage(sessionId: session.sessionId));
       return;
     }
+    if (ref.read(selectedSendingFilesProvider).isEmpty) {
+      // Nothing picked yet: ask what to send, then send it to this device right away
+      final favorite = ref.read(favoritesProvider).firstWhereOrNull((f) => f.fingerprint == device.fingerprint);
+      final option = await showSendOptions(
+        context,
+        name: favorite?.alias ?? device.alias,
+        avatar: DeviceAvatar(deviceType: device.deviceType, size: 40, mine: favorite != null),
+        options: _sendOptions(),
+      );
+      if (option == null || !mounted) return;
+      if (option == FilePickerOption.text) {
+        await rememberSendTarget(ref, device.fingerprint);
+        if (!mounted) return;
+        await showSendTextSheet(context, to: device.fingerprint);
+        return;
+      }
+      await ref.global.dispatchAsync(PickFileAction(option: option, context: context));
+      if (!mounted || ref.read(selectedSendingFilesProvider).isEmpty) return;
+      // Picking may have taken a while: use the address the device has now
+      await _sendSelectedTo(ref, sendTargetDevice(ref.read(sendTabVmProvider), device.fingerprint) ?? device);
+      return;
+    }
     await rememberSendTarget(ref, device.fingerprint);
     if (!mounted) return;
     await ref.read(sendTabVmProvider).onTapDevice(context, device);
+  }
+
+  /// What can be sent, the usual things first
+  static List<FilePickerOption> _sendOptions() {
+    const order = [
+      FilePickerOption.media,
+      FilePickerOption.file,
+      FilePickerOption.text,
+      FilePickerOption.clipboard,
+      FilePickerOption.folder,
+      FilePickerOption.app,
+    ];
+    return order.where(pickerOptions.contains).toList();
   }
 
   Future<void> _deviceMenu(FavoriteDevice? favorite, Device? device) async {
@@ -103,22 +145,27 @@ class _TransferTabState extends State<TransferTab> with Refena {
     final verifyPage = favorite == null || verifiedFingerprints(ref.read(pairedDevicesProvider)).contains(favorite.fingerprint)
         ? null
         : verifyPageFor(peerType: knownDeviceType(favorite.fingerprint), online: device);
-    final result = await showModalBottomSheet<_MenuChoice>(
-      context: context,
-      useSafeArea: true,
+    final result = await showSmSheet<_MenuChoice>(
+      context,
+      maxWidth: 380,
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (verifyPage != null)
               ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
                 leading: const Icon(LucideIcons.shieldCheck),
                 title: Text(t.shareme.home.verifyDevice),
                 onTap: () => Navigator.of(context).pop(_MenuChoice.verify),
               ),
             ListTile(
-              leading: Icon(add ? LucideIcons.plus : LucideIcons.minus),
-              title: Text(add ? t.shareme.home.addToMine : t.shareme.home.removeFromMine),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: Icon(add ? LucideIcons.plus : LucideIcons.unlink, color: add ? null : context.sm.warn),
+              title: Text(
+                add ? t.shareme.home.addToMine : t.shareme.home.removeFromMine,
+                style: add ? null : ShareMeText.title.copyWith(color: context.sm.warn),
+              ),
               onTap: () => Navigator.of(context).pop(_MenuChoice.addOrRemove),
             ),
           ],
@@ -188,17 +235,20 @@ class _TransferTabState extends State<TransferTab> with Refena {
     List<Widget> justReceived() {
       if (recent == null) return const [];
       return [
-        _SectionHeader(title: t.shareme.home.justReceived, note: formatAgo(recent.first.timestamp)),
-        _RecentCard(
-          frames: [
-            for (final e in recent)
-              FilmFrame(fileName: e.fileName, fileType: e.fileType, path: e.path, isMessage: e.isMessage, inGallery: e.savedToGallery),
-          ],
-          fromAlias: recent.first.senderAlias,
-          totalBytes: recent.fold<int>(0, (s, e) => s + e.fileSize),
-          // The "original" tag gets a check only if every file in the batch had its SHA-256 verified (old entries are null)
-          verified: recent.every((e) => e.checksumVerified == true),
-          onTap: () => context.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.history)),
+        _SectionHeader(title: t.shareme.home.justReceived, note: () => formatAgo(recent.first.timestamp)),
+        SmPressable(
+          scale: 0.98,
+          child: _RecentCard(
+            frames: [
+              for (final e in recent)
+                FilmFrame(fileName: e.fileName, fileType: e.fileType, path: e.path, isMessage: e.isMessage, inGallery: e.savedToGallery),
+            ],
+            fromAlias: recent.first.senderAlias,
+            totalBytes: recent.fold<int>(0, (s, e) => s + e.fileSize),
+            // The "original" tag gets a check only if every file in the batch had its SHA-256 verified (old entries are null)
+            verified: recent.every((e) => e.checksumVerified == true),
+            onTap: () => context.redux(homePageControllerProvider).dispatch(ChangeTabAction(HomeTab.history)),
+          ),
         ),
       ];
     }
@@ -292,7 +342,7 @@ class _TransferTabState extends State<TransferTab> with Refena {
           );
 
     // Only shown while receiving is off (server not running); normally there is no "Nearby devices can find you" line
-    final receiveOff = server == null ? _Banner(text: t.shareme.home.meHidden) : null;
+    final receiveOff = server == null ? const _ReceiveOff() : null;
 
     // ── PC: three columns (the navigation rail lives in HomePage) → device column 300 | content ──
     if (useDesktopLayout(context)) {
@@ -315,21 +365,30 @@ class _TransferTabState extends State<TransferTab> with Refena {
               ],
             ),
           ),
-          VerticalDivider(width: 1, thickness: 1, color: c.line),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.only(top: 16, bottom: 24),
-              children: [
-                ?selectionBar,
-                _DropZone(
-                  // Use the name from "My devices" (it may have been renamed) to match the list on the left, not the peer's own name
-                  targetName: target == null ? null : (favorites.firstWhereOrNull((f) => f.fingerprint == target.fingerprint)?.alias ?? target.alias),
-                  onFiles: () async => pickAndSend(context, FilePickerOption.file),
-                  onFolder: () async => pickAndSend(context, FilePickerOption.folder),
-                  onText: () async => showSendTextSheet(context),
-                ),
-                ...justReceived(),
-              ],
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final recentRow = justReceived();
+                // The drop zone takes whatever height is left (the recent card needs about 130), so the window has no empty half
+                final zone = math.max(280.0, box.maxHeight - 16 - 20 - (recentRow.isEmpty ? 0 : 130) - (selectionBar == null ? 0 : 72));
+                return ListView(
+                  padding: const EdgeInsets.only(top: 16, bottom: 20) + EdgeInsets.symmetric(horizontal: smSideInset(box.maxWidth, maxWidth: 1100)),
+                  children: [
+                    ?selectionBar,
+                    _DropZone(
+                      height: zone,
+                      // Use the name from "My devices" (it may have been renamed) to match the list on the left, not the peer's own name
+                      targetName: target == null
+                          ? null
+                          : (favorites.firstWhereOrNull((f) => f.fingerprint == target.fingerprint)?.alias ?? target.alias),
+                      onFiles: () async => pickAndSend(context, FilePickerOption.file),
+                      onFolder: () async => pickAndSend(context, FilePickerOption.folder),
+                      onText: () async => showSendTextSheet(context),
+                    ),
+                    ...recentRow,
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -353,9 +412,15 @@ class _TransferTabState extends State<TransferTab> with Refena {
               children: [
                 _TopBar(onScan: openScan),
                 ?receiveOff,
-                ...justReceived(),
-                ...mineSection(avatarSize: 46, onScan: openScan),
-                ...nearbySection(avatarSize: 46),
+                // Sections that come and go open up smoothly; a new batch fades in over the old one
+                SmReveal(
+                  child: recent == null ? null : Column(key: ValueKey(recent.first.id), children: justReceived()),
+                ),
+                // A single device gets a larger avatar, so the home screen doesn't look empty
+                ...mineSection(avatarSize: favorites.length == 1 ? 64 : 50, onScan: openScan),
+                SmReveal(
+                  child: unpaired.isEmpty ? null : Column(children: nearbySection(avatarSize: 46)),
+                ),
               ],
             ),
           ),
@@ -471,7 +536,7 @@ Future<void> sendClipboard(BuildContext context) async {
 
 // ───────────────────────── Widgets ─────────────────────────
 
-/// Top bar: app icon + wordmark + scan button, 56 high.
+/// Top bar: app icon + wordmark + scan button (a small card), 64 high.
 class _TopBar extends StatelessWidget {
   final VoidCallback onScan;
 
@@ -481,22 +546,41 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.sm;
     return SizedBox(
-      height: 56,
+      height: 64,
       child: Padding(
-        padding: const EdgeInsets.only(left: 20, right: 10),
+        padding: const EdgeInsets.only(left: 20, right: 16),
         child: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Assets.img.logo128.image(width: 28, height: 28, filterQuality: FilterQuality.medium),
-            ),
-            const SizedBox(width: 10),
-            Text('Shuttle', style: ShareMeText.brand.copyWith(color: c.ink)),
+            const SmAppLogo(size: 36),
+            const SizedBox(width: 12),
+            Text('Shuttle', style: ShareMeText.brand.copyWith(color: c.ink, fontSize: 24)),
             const Spacer(),
-            IconButton(
-              tooltip: t.shareme.home.scanToPair,
-              icon: const Icon(LucideIcons.scanQrCode),
-              onPressed: onScan,
+            Tooltip(
+              message: t.shareme.home.scanToPair,
+              excludeFromSemantics: true,
+              child: Semantics(
+                container: true,
+                button: true,
+                label: t.shareme.home.scanToPair,
+                child: SmPressable(
+                  scale: 0.92,
+                  child: DecoratedBox(
+                    decoration: smCardDecoration(c, radius: 16),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: onScan,
+                        child: SizedBox(
+                          width: 46,
+                          height: 46,
+                          child: Icon(LucideIcons.scanQrCode, color: c.ink),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -506,6 +590,34 @@ class _TopBar extends StatelessWidget {
 }
 
 /// A banner that only appears when something is wrong (currently only "receiving is off").
+/// Receiving is off. Not said at once: while the app starts it is off for an instant.
+class _ReceiveOff extends StatefulWidget {
+  const _ReceiveOff();
+
+  @override
+  State<_ReceiveOff> createState() => _ReceiveOffState();
+}
+
+class _ReceiveOffState extends State<_ReceiveOff> {
+  late final Timer _timer;
+  var _shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(const Duration(milliseconds: 1500), () => setState(() => _shown = true));
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => _shown ? _Banner(text: t.shareme.home.meHidden) : const SizedBox.shrink();
+}
+
 class _Banner extends StatelessWidget {
   final String text;
 
@@ -536,7 +648,7 @@ class _Banner extends StatelessWidget {
 /// Section header: title on the left (ink2); on the right, an optional small gray note (e.g. "12 h ago") or a small button.
 class _SectionHeader extends StatelessWidget {
   final String title;
-  final String? note;
+  final String Function()? note;
   final Widget? trailing;
 
   const _SectionHeader({required this.title, this.note, this.trailing});
@@ -550,7 +662,7 @@ class _SectionHeader extends StatelessWidget {
         children: [
           Text(title, style: ShareMeText.section.copyWith(color: c.ink2)),
           const Spacer(),
-          if (note != null) Text(note!, style: ShareMeText.meta.copyWith(color: c.ink2)),
+          if (note != null) SmTicking(note!, style: ShareMeText.meta.copyWith(color: c.ink2)),
           ?trailing,
         ],
       ),
@@ -571,21 +683,14 @@ class _Group extends StatelessWidget {
     final c = context.sm;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: DecoratedBox(
-        decoration: smCardDecoration(c),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
-          child: Material(
-            type: MaterialType.transparency,
-            child: Column(
-              children: [
-                for (var i = 0; i < children.length; i++) ...[
-                  if (i > 0) Divider(height: 1, thickness: 1, indent: dividerIndent, color: c.line),
-                  children[i],
-                ],
-              ],
-            ),
-          ),
+      child: SmCard(
+        child: Column(
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0) Divider(height: 1, thickness: 1, indent: dividerIndent, color: c.line),
+              children[i],
+            ],
+          ],
         ),
       ),
     );
@@ -713,7 +818,7 @@ class _DeviceRow extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 13, 12, 13),
         child: Row(
-          crossAxisAlignment: session != null ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             avatar,
             const SizedBox(width: 14),
@@ -728,7 +833,7 @@ class _DeviceRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (showStatus) ...[
+                  if (showStatus && session == null) ...[
                     const SizedBox(height: 2),
                     Row(
                       children: [
@@ -736,7 +841,13 @@ class _DeviceRow extends StatelessWidget {
                           Container(
                             width: 7,
                             height: 7,
-                            decoration: BoxDecoration(color: c.ok, shape: BoxShape.circle),
+                            decoration: BoxDecoration(
+                              color: c.ok,
+                              shape: BoxShape.circle,
+                              boxShadow: Theme.of(context).brightness == Brightness.dark
+                                  ? [BoxShadow(color: c.ok.withValues(alpha: 0.7), blurRadius: 6)]
+                                  : null,
+                            ),
                           ),
                           const SizedBox(width: 6),
                         ],
@@ -785,21 +896,34 @@ class _AddButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.sm;
-    return Material(
-      color: c.tonal,
-      shape: const StadiumBorder(),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
+    // Taps just beside the pill count too: otherwise they would hit the row, which sends
+    return Semantics(
+      container: true,
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true, // the pill inside is the button for screen readers
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 7, 14, 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 16, color: c.ink),
-              const SizedBox(width: 4),
-              Text(label ?? t.shareme.home.add, style: ShareMeText.label.copyWith(color: c.ink, fontSize: 14)),
-            ],
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Material(
+            color: c.tonal,
+            shape: const StadiumBorder(),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 7, 14, 7),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 16, color: c.ink),
+                    const SizedBox(width: 4),
+                    Text(label ?? t.shareme.home.add, style: ShareMeText.label.copyWith(color: c.ink, fontSize: 14)),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -807,7 +931,7 @@ class _AddButton extends StatelessWidget {
   }
 }
 
-/// Transfer block: caption + percentage / 6-high progress bar / numbers (sent/total, speed, time left).
+/// Transfer block under a device's name: progress bar and percentage, time left and speed.
 class _TransferBlock extends StatelessWidget {
   final SendSessionState session;
   final FileTransferNotifier transfers;
@@ -831,47 +955,36 @@ class _TransferBlock extends StatelessWidget {
     final speed = elapsedMs > 500 ? current / (elapsedMs / 1000) : 0.0;
     final remaining = speed > 0 ? Duration(seconds: ((total - current) / speed).round()) : null;
 
+    final caption = waiting
+        // Checksums are computed before the request goes out, so it isn't "waiting for acceptance" yet
+        ? (session.hashedFileCount < session.files.length
+              ? t.shareme.send.preparing(curr: session.hashedFileCount, n: session.files.length)
+              : t.shareme.home.waiting(n: session.files.length))
+        : formatPace(left: remaining, speed: speed);
     return Padding(
-      padding: const EdgeInsets.only(top: 10, right: 8),
+      padding: const EdgeInsets.only(top: 9, right: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  waiting
-                      // Checksums are computed before the request goes out, so it isn't "waiting for acceptance" yet
-                      ? (session.hashedFileCount < session.files.length
-                            ? t.shareme.send.preparing(curr: session.hashedFileCount, n: session.files.length)
-                            : t.shareme.home.waiting(n: session.files.length))
-                      : t.shareme.home.sending(n: session.files.length),
-                  style: ShareMeText.meta.copyWith(color: c.ink),
+              Expanded(child: SmProgressBar(value: waiting ? null : ratio, height: 7)),
+              if (!waiting) ...[
+                const SizedBox(width: 10),
+                Text(
+                  '${(ratio * 100).floor()}%',
+                  style: ShareMeText.data.copyWith(color: c.ink, fontSize: 13.5, fontWeight: FontWeight.w600),
                 ),
-              ),
-              if (!waiting) Text('${(ratio * 100).floor()}%', style: ShareMeText.data.copyWith(color: c.ink)),
+              ],
             ],
           ),
-          const SizedBox(height: 6),
-          TweenAnimationBuilder<double>(
-            tween: Tween(end: waiting ? 0 : ratio),
-            duration: ShareMeMotion.short,
-            builder: (context, value, _) => ClipRRect(
-              borderRadius: BorderRadius.circular(ShareMeSize.radiusPill),
-              child: LinearProgressIndicator(value: waiting ? null : value, minHeight: 6, color: c.accent, backgroundColor: c.tonalStrong),
-            ),
+          const SizedBox(height: 5),
+          Text(
+            caption,
+            style: ShareMeText.meta.copyWith(color: c.ink2),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          if (!waiting) ...[
-            const SizedBox(height: 6),
-            Text(
-              [
-                '${formatSize(current)}/${formatSize(total)}',
-                if (speed > 0) formatSpeed(speed),
-                if (remaining != null) t.shareme.home.remaining(time: formatDuration(remaining)),
-              ].join('   '),
-              style: ShareMeText.data.copyWith(color: c.ink2),
-            ),
-          ],
         ],
       ),
     );
@@ -967,7 +1080,7 @@ class _ThumbStack extends StatelessWidget {
                 decoration: stacked
                     ? BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: c.group, width: 2),
+                        border: Border.all(color: Color.alphaBlend(c.cardTop, c.bgTop), width: 2),
                       )
                     : null,
                 child: FileThumb(frame: shown[i], size: stacked ? _size - 4 : _size, radius: 14),
@@ -1041,44 +1154,53 @@ class _SendDock extends StatelessWidget {
     final c = context.sm;
     final target = this.target;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      padding: EdgeInsets.fromLTRB(16, target == null ? 6 : 0, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           if (target != null) ...[
-            DecoratedBox(
-              decoration: smCardDecoration(c, radius: ShareMeSize.radiusPill),
-              child: Material(
-                type: MaterialType.transparency,
-                child: InkWell(
-                  customBorder: const StadiumBorder(),
-                  onTap: onChangeTarget,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(t.shareme.home.sendTo, style: ShareMeText.meta.copyWith(color: c.ink2, fontSize: 13.5)),
-                        const SizedBox(width: 8),
-                        DeviceAvatar(deviceType: target.deviceType, size: 22, mine: true),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            target.alias,
-                            style: ShareMeText.label.copyWith(color: c.ink, fontSize: 13.5),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              excludeFromSemantics: true, // the pill inside is the button for screen readers
+              onTap: onChangeTarget,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: DecoratedBox(
+                  decoration: smCardDecoration(c, radius: ShareMeSize.radiusPill),
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: InkWell(
+                      customBorder: const StadiumBorder(),
+                      onTap: onChangeTarget,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(t.shareme.home.sendTo, style: ShareMeText.meta.copyWith(color: c.ink2, fontSize: 13.5)),
+                            const SizedBox(width: 8),
+                            DeviceAvatar(deviceType: target.deviceType, size: 22, mine: true),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                target.alias,
+                                style: ShareMeText.label.copyWith(color: c.ink, fontSize: 13.5),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(LucideIcons.chevronDown, size: 16, color: c.ink2),
+                          ],
                         ),
-                        Icon(LucideIcons.chevronDown, size: 16, color: c.ink2),
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 4),
           ],
           _dockButtons(),
         ],
@@ -1092,7 +1214,7 @@ class _SendDock extends StatelessWidget {
         Expanded(
           child: FilledButton.icon(
             onPressed: onMedia,
-            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),
+            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16), minimumSize: const Size(64, 62)),
             icon: const Icon(LucideIcons.images, size: 21),
             // Scales down instead of truncating when the system font size is larger (e.g. 1.25x)
             label: FittedBox(fit: BoxFit.scaleDown, child: Text(t.shareme.home.sendMedia, maxLines: 1)),
@@ -1118,26 +1240,29 @@ class _DockButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.sm;
     final radius = BorderRadius.circular(ShareMeSize.radiusButton);
-    return DecoratedBox(
-      decoration: smCardDecoration(c, radius: ShareMeSize.radiusButton),
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          borderRadius: radius,
-          onTap: onTap,
-          child: SizedBox(
-            width: 74,
-            height: ShareMeSize.buttonH,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 20, color: c.ink),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  style: ShareMeText.labelSm.copyWith(color: c.ink, fontWeight: FontWeight.w600),
-                ),
-              ],
+    return SmPressable(
+      scale: 0.95,
+      child: DecoratedBox(
+        decoration: smCardDecoration(c, radius: ShareMeSize.radiusButton),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: radius,
+            onTap: onTap,
+            child: SizedBox(
+              width: 74,
+              height: 62,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 20, color: c.ink),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: ShareMeText.labelSm.copyWith(color: c.ink, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1146,9 +1271,9 @@ class _DockButton extends StatelessWidget {
   }
 }
 
-/// Desktop drop zone: solid card + warm round upload icon + a title + "or press Ctrl+V to send the clipboard" + three
-/// small buttons.
-/// - While dragging over: accent border, light warm background, "Release, then choose who to send to" (120 ms transition).
+/// Desktop drop zone: card with a warm light behind the glossy upload icon + a title + "or press Ctrl+V to send the clipboard" +
+/// three small buttons.
+/// - While dragging over: accent border, light warm background, "Release, then choose who to send to"; nothing jumps.
 ///   The OS doesn't say how many files or how big while dragging (desktop_drop only gives the file list on drop), so no
 ///   count is shown.
 /// - "Drop onto a device on the left to send directly" isn't done yet: each row would need its own drop target, which
@@ -1156,11 +1281,12 @@ class _DockButton extends StatelessWidget {
 class _DropZone extends StatelessWidget {
   /// With a default device the title says "Drop here to send to `name`" (dropping sends right away)
   final String? targetName;
+  final double height;
   final VoidCallback onFiles;
   final VoidCallback onFolder;
   final VoidCallback onText;
 
-  const _DropZone({required this.targetName, required this.onFiles, required this.onFolder, required this.onText});
+  const _DropZone({required this.targetName, required this.height, required this.onFiles, required this.onFolder, required this.onText});
 
   @override
   Widget build(BuildContext context) {
@@ -1170,72 +1296,171 @@ class _DropZone extends StatelessWidget {
       builder: (context, active, _) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-          child: AnimatedContainer(
-            duration: ShareMeMotion.press,
-            height: 300,
-            decoration: BoxDecoration(
-              color: active ? c.accentSoft : c.group,
-              borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
-              border: Border.all(color: active ? c.accent : Colors.transparent, width: 2),
-              boxShadow: c.cardShadow,
-            ),
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        gradient: ShareMeGradients.brand,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: ShareMeGradients.glow.withValues(alpha: 0.35),
-                            blurRadius: 22,
-                            spreadRadius: -8,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Icon(active ? LucideIcons.download : LucideIcons.upload, size: 28, color: Colors.white),
+          // The height follows the window at once; only the colors are animated
+          child: SizedBox(
+            height: height,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                DecoratedBox(decoration: smCardDecoration(c, radius: ShareMeSize.radiusGroup)),
+                // Faded in on top: blending the card's translucent color into this one would flash light gray halfway in dark mode
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOut,
+                  opacity: active ? 1 : 0,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: c.accentSoft,
+                      borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
+                      border: Border.all(color: c.accent, width: 2),
                     ),
-                    const SizedBox(height: 18),
-                    Text(
-                      targetName == null
-                          ? (active ? t.shareme.home.dropActive : t.shareme.home.dropTitle)
-                          : (active ? t.shareme.home.dropActiveTo(name: targetName!) : t.shareme.home.dropTitleTo(name: targetName!)),
-                      style: ShareMeText.title.copyWith(color: c.ink, fontSize: 21, height: 28 / 21, fontWeight: FontWeight.w700),
-                      textAlign: TextAlign.center,
-                    ),
-                    if (!active) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        checkPlatform([TargetPlatform.macOS]) ? t.shareme.home.dropHintMac : t.shareme.home.dropHint,
-                        style: ShareMeText.meta.copyWith(color: c.ink2, fontSize: 14),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 22),
-                      Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 10,
-                        runSpacing: 8,
-                        children: [
-                          _TonalChipButton(icon: LucideIcons.file, label: t.shareme.home.pickFiles, onTap: onFiles),
-                          _TonalChipButton(icon: LucideIcons.folder, label: t.shareme.home.pickFolder, onTap: onFolder),
-                          _TonalChipButton(icon: LucideIcons.type, label: t.shareme.home.sendTextOrLink, onTap: onText),
-                        ],
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
+                // A soft warm light behind the icon
+                SmGlow(
+                  color: c.glow1.withValues(alpha: c.glow1.a * 0.45),
+                  center: const Alignment(0, -0.42),
+                  radius: 0.75,
+                  corner: ShareMeSize.radiusGroup - 1,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(end: active ? 1 : 0),
+                        duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 280),
+                        curve: Curves.easeOutCubic,
+                        // Everything keeps its place while a file is dragged over; the buttons only fade and the icon and title glide to
+                        // the middle, so nothing jumps
+                        builder: (context, v, _) => Transform.translate(
+                          offset: Offset(0, 46 * v),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Transform.scale(scale: 1 + 0.14 * v, child: _DropIcon(active ? LucideIcons.download : LucideIcons.upload)),
+                              const SizedBox(height: 18),
+                              SmSwap(
+                                duration: const Duration(milliseconds: 280),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  targetName == null
+                                      ? (active ? t.shareme.home.dropActive : t.shareme.home.dropTitle)
+                                      : (active ? t.shareme.home.dropActiveTo(name: targetName!) : t.shareme.home.dropTitleTo(name: targetName!)),
+                                  key: ValueKey(active),
+                                  style: ShareMeText.title.copyWith(color: c.ink, fontSize: 21, height: 28 / 21, fontWeight: FontWeight.w700),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              IgnorePointer(
+                                ignoring: active,
+                                child: ExcludeSemantics(
+                                  excluding: active,
+                                  child: Opacity(
+                                    opacity: (1 - v * 1.6).clamp(0.0, 1.0),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          checkPlatform([TargetPlatform.macOS]) ? t.shareme.home.dropHintMac : t.shareme.home.dropHint,
+                                          style: ShareMeText.meta.copyWith(color: c.ink2, fontSize: 14),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        const SizedBox(height: 22),
+                                        // One row at every width: a narrow window makes the buttons a little smaller
+                                        FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Row(
+                                            children: [
+                                              FilledButton.icon(
+                                                onPressed: onFiles,
+                                                style: FilledButton.styleFrom(
+                                                  minimumSize: const Size(64, 46),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 22),
+                                                ),
+                                                icon: const Icon(LucideIcons.file, size: 18),
+                                                label: Text(t.shareme.home.pickFiles),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              _TonalChipButton(icon: LucideIcons.folder, label: t.shareme.home.pickFolder, onTap: onFolder),
+                                              const SizedBox(width: 10),
+                                              _TonalChipButton(icon: LucideIcons.type, label: t.shareme.home.sendTextOrLink, onTap: onText),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
       },
+    );
+  }
+}
+
+/// The drop zone's round icon: brand gradient with a glossy upper edge, like the device avatars and the app icon.
+class _DropIcon extends StatelessWidget {
+  final IconData icon;
+
+  const _DropIcon(this.icon);
+
+  static const _size = 72.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: _size,
+      height: _size,
+      decoration: BoxDecoration(
+        gradient: ShareMeGradients.brand,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: ShareMeGradients.glow.withValues(alpha: 0.42),
+            blurRadius: 26,
+            spreadRadius: -8,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned(
+            left: _size * 0.12,
+            right: _size * 0.12,
+            top: _size * 0.04,
+            height: _size * 0.46,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(_size * 0.4),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.white.withValues(alpha: 0.36), Colors.white.withValues(alpha: 0)],
+                ),
+              ),
+            ),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            // Out first, then in: two arrows on top of each other would look like a third icon
+            switchInCurve: const Interval(0.5, 1),
+            switchOutCurve: const Interval(0.5, 1),
+            child: Icon(icon, key: ValueKey(icon), size: 30, color: Colors.white),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1249,25 +1474,11 @@ class _TonalChipButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.sm;
-    return Material(
-      color: c.tonal,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: c.ink),
-              const SizedBox(width: 8),
-              Text(label, style: ShareMeText.label.copyWith(color: c.ink, fontSize: 14)),
-            ],
-          ),
-        ),
-      ),
+    return ElevatedButton.icon(
+      onPressed: onTap,
+      style: ElevatedButton.styleFrom(minimumSize: const Size(64, 46), padding: const EdgeInsets.symmetric(horizontal: 18)),
+      icon: Icon(icon, size: 18),
+      label: Text(label),
     );
   }
 }
@@ -1309,7 +1520,7 @@ class _HeaderIcon extends StatelessWidget {
     return IconButton(
       tooltip: tooltip,
       onPressed: onTap,
-      visualDensity: VisualDensity.compact,
+      visualDensity: VisualDensity.standard,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints.tightFor(width: 32, height: 28),
       iconSize: 17,

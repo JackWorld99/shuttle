@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:localsend_app/config/shareme_theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
@@ -5,12 +7,15 @@ import 'package:localsend_app/pages/receive_page.dart' show ReceivePageVm;
 import 'package:localsend_app/pages/web_share_page.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/paired_devices_provider.dart';
-import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/shareme_format.dart';
+import 'package:localsend_app/util/shareme_own_page.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
+import 'package:localsend_app/widget/shareme/bottom_actions.dart';
+import 'package:localsend_app/widget/shareme/content_stack.dart';
+import 'package:localsend_app/widget/shareme/desktop_layout.dart';
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
-import 'package:localsend_app/widget/shareme/film_strip.dart';
-import 'package:localsend_isolates/model/dto/file_dto.dart';
-import 'package:localsend_isolates/model/file_type.dart';
+import 'package:localsend_app/widget/shareme/sm_sheets.dart';
+import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/session_status.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:refena_flutter/addons.dart';
@@ -19,28 +24,40 @@ import 'package:refena_flutter/refena_flutter.dart';
 /// Shuttle: the "incoming request" page. Only used for file requests; text and links are handled separately (snackbar or
 /// bottom sheet, see ReceiveController).
 ///
-/// It answers "who, what, and can it be trusted" first:
-/// - "My devices": shows the device's seal. Only over an encrypted connection, where the sender's fingerprint comes from
-///   the mTLS certificate and can't be forged, does it say the certificate fingerprint matches the one from when it was added;
-///   without encryption it honestly says the identity can't be confirmed.
-/// - Unknown device: no seal, only a dashed placeholder, plus an amber warning and the device fingerprint in monospace.
+/// Who, what, yes or no, and nothing else. A verified device of mine shows its check mark; anything to be careful about is one short
+/// amber line ("Unknown device", "Not verified", "Not encrypted") that explains itself when tapped, and then neither button is
+/// highlighted.
 ///
 /// Data and actions fully reuse LocalSend's [ReceivePageVm] (accept / decline / close).
-class SmReceivePage extends StatelessWidget {
+class SmReceivePage extends StatefulWidget {
   final ViewProvider<ReceivePageVm> vm;
 
   const SmReceivePage(this.vm, {super.key});
 
   @override
+  State<SmReceivePage> createState() => _SmReceivePageState();
+}
+
+class _SmReceivePageState extends State<SmReceivePage> {
+  /// The page as last built while its request existed: stays on screen during the exit animation (declining ends the session first)
+  Widget? _last;
+
+  @override
   Widget build(BuildContext context) {
     final c = context.sm;
-    final vm = context.watch(this.vm);
+    final vm = context.watch(widget.vm);
+    if (vm.status == null && _last != null) {
+      // The request is gone (declined, answered elsewhere, replaced by another one): so is this page
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) closeOwnPage(this.context, () => this.context.global.dispatch(NavigateAction.popUntil<WebSharePage>()));
+      });
+      return IgnorePointer(child: _last);
+    }
     final sender = vm.sender;
     final favorites = context.watch(favoritesProvider);
     final isMine = favorites.any((f) => f.fingerprint == sender.fingerprint);
     // Only verified devices in "My devices" are accepted directly; unverified ones are asked on this page too
     final verified = isVerifiedMine(favorites: favorites, paired: context.watch(pairedDevicesProvider), fingerprint: sender.fingerprint);
-    final autoAccept = context.watch(settingsProvider.select((s) => s.quickSaveFromFavorites));
     final bytes = vm.files.fold<int>(0, (a, f) => a + f.size);
 
     void decline() {
@@ -54,107 +71,128 @@ class SmReceivePage extends StatelessWidget {
     }
 
     final canceled = vm.status == SessionStatus.canceledBySender;
+    final warnings = [
+      if (!isMine) t.shareme.receive.stranger else if (!verified && sender.https) t.shareme.home.unverified,
+      if (!sender.https) t.shareme.receive.notEncrypted,
+    ];
 
-    return PopScope(
+    final page = PopScope(
       // Back gesture = decline (same as LocalSend's ReceivePage)
       onPopInvokedWithResult: (didPop, _) {
         if (didPop && !canceled) vm.onDecline();
         if (didPop && canceled) vm.onClose();
       },
-      child: Scaffold(
+      child: SmScaffold(
         body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-            children: [
-              Center(
-                child: DeviceAvatar(deviceType: sender.deviceType, size: 64, mine: isMine, verified: verified, badgeRing: c.bg),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                sender.alias,
-                style: ShareMeText.display.copyWith(color: c.ink),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                t.shareme.receive.wantsToSend(n: vm.files.length, size: formatSize(bytes)),
-                style: ShareMeText.body.copyWith(color: c.ink2),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 10),
-              if (isMine && sender.https && !verified)
-                _TrustLine(icon: LucideIcons.shield, color: c.ink2, text: t.shareme.receive.mineUnchecked)
-              else if (isMine)
-                _TrustLine(
-                  icon: sender.https ? LucideIcons.shieldCheck : LucideIcons.shieldAlert,
-                  color: sender.https ? c.ok : c.warn,
-                  text: sender.https ? t.shareme.receive.mineVerified : t.shareme.receive.mineUnencrypted,
-                )
-              else
-                Text(
-                  '${t.shareme.receive.fingerprint}  ${groupFingerprint(sender.fingerprint)}',
-                  style: ShareMeText.data.copyWith(color: c.ink2),
-                  textAlign: TextAlign.center,
-                ),
-              if (!isMine) ...[
-                const SizedBox(height: 18),
-                _Banner(title: t.shareme.receive.strangerTitle, body: t.shareme.receive.strangerBody),
-              ],
-              if (!sender.https) ...[
-                const SizedBox(height: 10),
-                _Banner(title: t.shareme.receive.unencrypted, body: null),
-              ],
-              const SizedBox(height: 22),
-              Row(
-                children: [
-                  Text(t.shareme.receive.contents, style: ShareMeText.section.copyWith(color: c.ink2)),
-                  const SizedBox(width: 8),
-                  Text(t.shareme.receive.original, style: ShareMeText.meta.copyWith(color: c.ink3, fontSize: 12.5)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              _Preview(files: vm.files),
-              const SizedBox(height: 8),
-              Text(_summary(vm.files), style: ShareMeText.meta.copyWith(color: c.ink2)),
-              if (verified && !canceled) ...[
-                const SizedBox(height: 14),
-                Material(
-                  color: c.group,
-                  borderRadius: BorderRadius.circular(ShareMeSize.radiusButton),
-                  child: SwitchListTile(
-                    value: autoAccept,
-                    onChanged: (v) async => context.notifier(settingsProvider).setQuickSaveFromFavorites(v),
-                    title: Text(t.shareme.receive.autoAcceptVerified, style: ShareMeText.body.copyWith(color: c.ink, fontSize: 14)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ShareMeSize.radiusButton)),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 26),
-              if (canceled) ...[
-                Text(
-                  t.shareme.receive.canceledBySender,
-                  style: ShareMeText.title.copyWith(color: c.warn),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 14),
-                FilledButton(onPressed: close, child: Text(t.shareme.receive.close)),
-              ] else
-                // Two buttons side by side: the primary "Accept" takes 2/3 of the width, on the right
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: decline,
-                        style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(ShareMeSize.buttonH)),
-                        child: Text(t.shareme.receive.decline),
+          child: SmMaxWidth(
+            maxWidth: 480,
+            child: Column(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+                      child: Column(
+                        children: [
+                          _Arriving(
+                            waiting: !canceled,
+                            child: DeviceAvatar(deviceType: sender.deviceType, size: 104, mine: isMine, verified: verified),
+                          ),
+                          const SizedBox(height: 26),
+                          Text(
+                            sender.alias,
+                            style: ShareMeText.display.copyWith(color: c.ink, fontSize: 28),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 10),
+                          ContentSummary(
+                            files: [for (final f in vm.files) (f.fileName, f.fileType)],
+                            bytes: bytes,
+                            alignment: WrapAlignment.center,
+                            fontSize: 16,
+                          ),
+                          if (warnings.isNotEmpty) ...[
+                            const SizedBox(height: 22),
+                            for (final w in warnings)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: RequestWarning(text: w, onTap: () async => _explain(context, sender)),
+                              ),
+                          ],
+                          if (canceled) ...[
+                            const SizedBox(height: 22),
+                            Text(
+                              t.shareme.receive.canceledBySender,
+                              style: ShareMeText.title.copyWith(color: c.warn),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 2,
-                      child: FilledButton(onPressed: vm.onAccept, child: Text(t.shareme.receive.accept)),
+                  ),
+                ),
+                if (canceled)
+                  Padding(
+                    padding: BottomActions.padding,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(onPressed: close, child: Text(t.shareme.receive.close)),
                     ),
-                  ],
+                  )
+                else
+                  BottomActions(
+                    secondaryLabel: t.shareme.receive.decline,
+                    onSecondary: decline,
+                    primaryLabel: t.shareme.receive.accept,
+                    onPrimary: vm.onAccept,
+                    // An unknown device: neither answer is the obvious one
+                    equal: !isMine,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    _last = page;
+    return IgnorePointer(ignoring: false, child: page);
+  }
+
+  /// Who this is and what to check, for those who want to know
+  Future<void> _explain(BuildContext context, Device sender) async {
+    final c = context.sm;
+    await showSmSheet<void>(
+      context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(sender.alias, style: ShareMeText.title.copyWith(color: c.ink, fontSize: 18)),
+              const SizedBox(height: 12),
+              if (!sender.https) ...[
+                Text(t.shareme.receive.unencrypted, style: ShareMeText.body.copyWith(color: c.ink2)),
+                const SizedBox(height: 10),
+              ],
+              Text(t.shareme.receive.strangerTitle, style: ShareMeText.body.copyWith(color: c.ink2)),
+              const SizedBox(height: 4),
+              Text(t.shareme.receive.strangerBody, style: ShareMeText.body.copyWith(color: c.ink2)),
+              const SizedBox(height: 14),
+              Text(
+                '${t.shareme.receive.fingerprint}  ${groupFingerprint(sender.fingerprint)}',
+                style: ShareMeText.data.copyWith(color: c.ink3, fontSize: 13),
+              ),
+              // A sheet is dragged away; a dialog on the PC needs a button
+              if (useDesktopLayout(context))
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(t.shareme.receive.close)),
+                  ),
                 ),
             ],
           ),
@@ -162,115 +200,116 @@ class SmReceivePage extends StatelessWidget {
       ),
     );
   }
-
-  static String _summary(List<FileDto> files) {
-    final photos = files.where((f) => f.fileType == FileType.image).length;
-    final videos = files.where((f) => f.fileType == FileType.video).length;
-    final others = files.length - photos - videos;
-    return [
-      if (photos > 0) t.shareme.receive.photos(n: photos),
-      if (videos > 0) t.shareme.receive.videos(n: videos),
-      if (others > 0) t.shareme.receive.files(n: others),
-    ].join(' · ');
-  }
 }
 
-class _TrustLine extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String text;
+/// The sender's avatar with rings running outwards behind it, as long as the request waits for an answer.
+class _Arriving extends StatefulWidget {
+  final bool waiting;
+  final Widget child;
 
-  const _TrustLine({required this.icon, required this.color, required this.text});
+  const _Arriving({required this.waiting, required this.child});
+
+  @override
+  State<_Arriving> createState() => _ArrivingState();
+}
+
+class _ArrivingState extends State<_Arriving> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _run();
+  }
+
+  @override
+  void didUpdateWidget(_Arriving old) {
+    super.didUpdateWidget(old);
+    _run();
+  }
+
+  void _run() {
+    if (!widget.waiting || MediaQuery.disableAnimationsOf(context)) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      unawaited(_c.repeat());
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(text, style: ShareMeText.meta.copyWith(color: color)),
-        ),
-      ],
-    );
-  }
-}
-
-/// Warning banner: warnContainer background, size-20 warning icon, and a bold lead phrase that states the problem.
-class _Banner extends StatelessWidget {
-  final String title;
-  final String? body;
-
-  const _Banner({required this.title, required this.body});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.sm;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: c.warnContainer, borderRadius: BorderRadius.circular(16)),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(LucideIcons.triangleAlert, size: 20, color: c.warn),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  if (body != null) TextSpan(text: ' $body'),
-                ],
-              ),
-              style: ShareMeText.meta.copyWith(color: c.ink, fontSize: 13.5, height: 1.45),
-            ),
-          ),
-        ],
+    return RepaintBoundary(
+      child: CustomPaint(
+        painter: widget.waiting ? _RingsPainter(_c, context.sm.accent) : null,
+        child: Padding(padding: const EdgeInsets.all(34), child: widget.child),
       ),
     );
   }
 }
 
-/// Preview: at most 7 tiles, the 8th shows the remaining count (no thumbnails before accepting, so icons by file type).
-class _Preview extends StatelessWidget {
-  final List<FileDto> files;
+class _RingsPainter extends CustomPainter {
+  final Animation<double> t;
+  final Color color;
 
-  const _Preview({required this.files});
+  _RingsPainter(this.t, this.color) : super(repaint: t);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final inner = Rect.fromLTWH(34, 34, size.width - 68, size.height - 68);
+    final corner = inner.width * 0.32;
+    for (final shift in const [0.0, 0.5]) {
+      final v = (t.value + shift) % 1;
+      final grow = 34 * Curves.easeOut.transform(v);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(inner.inflate(grow), Radius.circular(corner + grow)),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = color.withValues(alpha: 0.32 * (1 - v)),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RingsPainter old) => old.color != color;
+}
+
+/// A short amber line ("Unknown device", "Not encrypted"); tap it for the explanation.
+class RequestWarning extends StatelessWidget {
+  final String text;
+  final VoidCallback? onTap;
+
+  const RequestWarning({required this.text, this.onTap, super.key});
 
   @override
   Widget build(BuildContext context) {
     final c = context.sm;
-    final shown = files.length > 8 ? files.take(7).toList() : files;
-    final rest = files.length - shown.length;
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        for (final f in shown)
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(color: c.tonal, borderRadius: BorderRadius.circular(ShareMeSize.radiusFrame)),
-            alignment: Alignment.center,
-            child: switch (f.fileType) {
-              FileType.image => Icon(LucideIcons.image, color: c.ink2, size: 24),
-              FileType.video => Icon(LucideIcons.play, color: c.ink2, size: 24),
-              _ => Text(fileExtension(f.fileName), style: ShareMeText.data.copyWith(color: c.ink2, fontSize: 11)),
-            },
+    return Material(
+      color: c.warnContainer,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(12, 7, onTap == null ? 14 : 9, 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(LucideIcons.triangleAlert, size: 16, color: c.warn),
+              const SizedBox(width: 7),
+              Text(text, style: ShareMeText.label.copyWith(color: c.warn, fontSize: 14)),
+              // There is more to read behind it
+              if (onTap != null) ...[const SizedBox(width: 2), Icon(LucideIcons.chevronRight, size: 16, color: c.warn)],
+            ],
           ),
-        if (rest > 0)
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(color: c.tonalStrong, borderRadius: BorderRadius.circular(ShareMeSize.radiusFrame)),
-            alignment: Alignment.center,
-            child: Text('+$rest', style: ShareMeText.data.copyWith(color: c.ink, fontSize: 14)),
-          ),
-      ],
+        ),
+      ),
     );
   }
 }

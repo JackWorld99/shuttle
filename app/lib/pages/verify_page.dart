@@ -3,6 +3,7 @@ import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/provider/security_provider.dart';
 import 'package:localsend_app/util/fingerprint_alphabet.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 
 class CombinedFingerprint {
@@ -47,7 +48,7 @@ class _VerifyPageState extends State<VerifyPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return SmScaffold(
       appBar: AppBar(
         title: Text(t.verifyPage.title),
       ),

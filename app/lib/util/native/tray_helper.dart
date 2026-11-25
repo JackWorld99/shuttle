@@ -6,6 +6,7 @@ import 'package:localsend_app/gen/assets.gen.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
+import 'package:localsend_app/util/native/win_window.dart';
 import 'package:logging/logging.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:tray_manager/tray_manager.dart' as tm;
@@ -70,6 +71,7 @@ Future<void> initTray() async {
 }
 
 Future<void> hideToTray() async {
+  (await WinWindow.main())?.goesToTray(); // Shuttle
   await windowManager.hide();
   if (checkPlatform([TargetPlatform.macOS])) {
     // This will crash on Windows
@@ -102,22 +104,34 @@ Future<void> setTrayReminder(bool on) async {
   }
 }
 
+/// Shuttle: the window was maximized before the small window in the corner took its place, and is maximized again once it's shown
+/// (a hidden window can't be)
+bool _maximizeOnceShown = false;
+
+void maximizeOnceShown() => _maximizeOnceShown = true;
+
 Future<void> showFromTray() async {
   unawaited(setTrayReminder(false));
-  await windowManager.show();
-  await windowManager.focus();
-  if (checkPlatform([TargetPlatform.macOS])) {
-    // This will crash on Windows
-    // https://github.com/localsend/localsend/issues/32
-    await windowManager.setSkipTaskbar(false);
-  }
+  final maximize = _maximizeOnceShown;
+  _maximizeOnceShown = false;
+  // Shuttle: a window that was hidden is black until it has been drawn
+  await showOnceDrawn(() async {
+    await windowManager.show();
+    if (maximize) await windowManager.maximize();
+    if (checkPlatform([TargetPlatform.macOS])) {
+      // This will crash on Windows
+      // https://github.com/localsend/localsend/issues/32
+      await windowManager.setSkipTaskbar(false);
+    }
 
-  // Enable animations
-  try {
-    RefenaScope.defaultRef.notifier(sleepProvider).setState((_) => false);
-  } catch (e) {
-    _logger.warning('Failed to update sleep state (Refena not yet initialized)', e);
-  }
+    // Enable animations
+    try {
+      RefenaScope.defaultRef.notifier(sleepProvider).setState((_) => false);
+    } catch (e) {
+      _logger.warning('Failed to update sleep state (Refena not yet initialized)', e);
+    }
+  });
+  await windowManager.focus();
 }
 
 Future<void> destroyTray() async {

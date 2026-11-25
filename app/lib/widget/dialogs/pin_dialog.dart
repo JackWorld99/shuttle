@@ -38,11 +38,14 @@ class _PinDialogState extends State<PinDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          TextFormField(
-            controller: _textController,
-            autofocus: true,
-            obscureText: widget.obscureText,
-            onFieldSubmitted: (value) => context.pop(value),
+          Semantics(
+            label: t.dialogs.pin.title,
+            child: TextFormField(
+              controller: _textController,
+              autofocus: true,
+              obscureText: widget.obscureText,
+              onFieldSubmitted: (value) => context.pop(value),
+            ),
           ),
           if (widget.showInvalidPin)
             Padding(

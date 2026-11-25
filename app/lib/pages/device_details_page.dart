@@ -11,6 +11,7 @@ import 'package:localsend_app/widget/big_button.dart';
 import 'package:localsend_app/widget/dialogs/favorite_delete_dialog.dart';
 import 'package:localsend_app/widget/dialogs/favorite_edit_dialog.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:refena_flutter/refena_flutter.dart';
@@ -65,7 +66,7 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> with Refena {
   Widget build(BuildContext context) {
     final device = widget.device;
     final favoriteEntry = ref.watch(favoritesProvider).findDevice(device);
-    return Scaffold(
+    return SmScaffold(
       appBar: AppBar(
         title: Text(t.deviceDetailsPage.title),
       ),

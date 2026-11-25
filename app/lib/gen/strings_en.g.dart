@@ -1005,6 +1005,12 @@ class Translations$shareme$time$en {
 
   /// en: '{n} d ago'
   String daysAgo({required Object n}) => '${n} d ago';
+
+  /// en: '{n} s'
+  String seconds({required Object n}) => '${n} s';
+
+  /// en: '{m} min {s} s'
+  String minSec({required Object m, required Object s}) => '${m} min ${s} s';
 }
 
 // Path: shareme.home
@@ -1081,8 +1087,8 @@ class Translations$shareme$home$en {
   /// en: 'No devices in My devices yet'
   String get emptyTitle => 'No devices in My devices yet';
 
-  /// en: 'Pair by QR code, or tap Add or Pair next to a device under Nearby.'
-  String get emptyBody => 'Pair by QR code, or tap Add or Pair next to a device under Nearby.';
+  /// en: 'Pair once, then just send'
+  String get emptyBody => 'Pair once, then just send';
 
   /// en: 'Online'
   String get sameWifi => 'Online';
@@ -1147,6 +1153,9 @@ class Translations$shareme$home$en {
   /// en: 'Drop here to send to {name}'
   String dropTitleTo({required Object name}) => 'Drop here to send to ${name}';
 
+  /// en: 'Send to {name}'
+  String sendToName({required Object name}) => 'Send to ${name}';
+
   /// en: 'Release to send to {name}'
   String dropActiveTo({required Object name}) => 'Release to send to ${name}';
 
@@ -1170,11 +1179,11 @@ class Translations$shareme$home$en {
     other: 'Sending ${n} items',
   );
 
-  /// en: '(one) {Waiting for 1 item to be accepted} (other) {Waiting for {n} items to be accepted}'
+  /// en: '(one) {Waiting · 1 item} (other) {Waiting · {n} items}'
   String waiting({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
     n,
-    one: 'Waiting for 1 item to be accepted',
-    other: 'Waiting for ${n} items to be accepted',
+    one: 'Waiting · 1 item',
+    other: 'Waiting · ${n} items',
   );
 }
 
@@ -1207,14 +1216,23 @@ class Translations$shareme$send$en {
   /// en: 'Send to'
   String get sheetTitle => 'Send to';
 
-  /// en: 'Share as a link instead'
-  String get shareLink => 'Share as a link instead';
+  /// en: 'Stop sending?'
+  String get stopTitle => 'Stop sending?';
+
+  /// en: 'Stop'
+  String get stop => 'Stop';
+
+  /// en: 'Keep going'
+  String get keepGoing => 'Keep going';
+
+  /// en: 'No Shuttle there? Share a link'
+  String get shareLink => 'No Shuttle there? Share a link';
 
   /// en: 'Offline · can send once it's online'
   String get offlineCannot => 'Offline · can send once it\'s online';
 
-  /// en: 'Nearby · not paired, needs approval'
-  String get nearbyNeedsApproval => 'Nearby · not paired, needs approval';
+  /// en: 'Needs approval'
+  String get nearbyNeedsApproval => 'Needs approval';
 
   /// en: 'No devices found nearby yet. Make sure both devices are on the same Wi-Fi.'
   String get noDevices => 'No devices found nearby yet. Make sure both devices are on the same Wi-Fi.';
@@ -1270,6 +1288,9 @@ class Translations$shareme$send$en {
   /// en: 'Delivered to'
   String get deliveredTo => 'Delivered to';
 
+  /// en: 'Delivered'
+  String get delivered => 'Delivered';
+
   /// en: 'size'
   String get statSize => 'size';
 
@@ -1291,8 +1312,8 @@ class Translations$shareme$send$en {
   /// en: 'original'
   String get originalBadge => 'original';
 
-  /// en: 'Resend the failed files'
-  String get retry => 'Resend the failed files';
+  /// en: 'Resend'
+  String get retry => 'Resend';
 
   /// en: '{name} declined the transfer'
   String declined({required Object name}) => '${name} declined the transfer';
@@ -1319,11 +1340,11 @@ class Translations$shareme$send$en {
   String notSentHint({required Object name}) =>
       '${name} couldn\'t be reached. Check that Shuttle is open there; when you\'re not on the same Wi-Fi, both devices need Tailscale on.';
 
-  /// en: 'Can't reach {name}. It may be asleep, or Shuttle isn't open.'
-  String notSentReason({required Object name}) => 'Can\'t reach ${name}. It may be asleep, or Shuttle isn\'t open.';
+  /// en: 'It may be asleep, or Shuttle isn't open.'
+  String get notSentReason => 'It may be asleep, or Shuttle isn\'t open.';
 
-  /// en: 'Can't reach {name}. When you're not on the same Wi-Fi, both devices need Tailscale on.'
-  String notSentReasonRemote({required Object name}) => 'Can\'t reach ${name}. When you\'re not on the same Wi-Fi, both devices need Tailscale on.';
+  /// en: 'When you're not on the same Wi-Fi, both devices need Tailscale on.'
+  String get notSentReasonRemote => 'When you\'re not on the same Wi-Fi, both devices need Tailscale on.';
 
   /// en: 'Details'
   String get details => 'Details';
@@ -1346,11 +1367,11 @@ class Translations$shareme$send$en {
   /// en: 'Back'
   String get back => 'Back';
 
-  /// en: '(one) {1 item · {size} · original quality} (other) {{n} items · {size} · original quality}'
+  /// en: '(one) {1 item · {size}} (other) {{n} items · {size}}'
   String sheetSummary({required num n, required Object size}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
     n,
-    one: '1 item · ${size} · original quality',
-    other: '${n} items · ${size} · original quality',
+    one: '1 item · ${size}',
+    other: '${n} items · ${size}',
   );
 
   /// en: '(one) {1 item. The receiver got the original.} (other) {{n} items. The receiver got the originals.}'
@@ -1477,11 +1498,23 @@ class Translations$shareme$receive$en {
   /// en: 'Device fingerprint'
   String get fingerprint => 'Device fingerprint';
 
+  /// en: 'Unknown device'
+  String get stranger => 'Unknown device';
+
+  /// en: 'Stop receiving?'
+  String get stopTitle => 'Stop receiving?';
+
+  /// en: 'Not encrypted'
+  String get notEncrypted => 'Not encrypted';
+
+  /// en: 'Decide later (Esc)'
+  String get later => 'Decide later (Esc)';
+
   /// en: 'This device is not in My devices.'
   String get strangerTitle => 'This device is not in My devices.';
 
-  /// en: 'Only accept if you know this device. You can add frequently used devices to My devices on the home screen.'
-  String get strangerBody => 'Only accept if you know this device. You can add frequently used devices to My devices on the home screen.';
+  /// en: 'Only accept if you know this device.'
+  String get strangerBody => 'Only accept if you know this device.';
 
   /// en: 'This connection is not encrypted. People on the same Wi-Fi may be able to see the content.'
   String get unencrypted => 'This connection is not encrypted. People on the same Wi-Fi may be able to see the content.';
@@ -1512,6 +1545,9 @@ class Translations$shareme$receive$en {
 
   /// en: 'Receiving from'
   String get receivingFrom => 'Receiving from';
+
+  /// en: '{n} received'
+  String receivedShort({required Object n}) => '${n} received';
 
   /// en: 'from {name} · took {time} · avg {speed}'
   String receivedFrom({required Object name, required Object time, required Object speed}) => 'from ${name} · took ${time} · avg ${speed}';
@@ -1753,6 +1789,20 @@ class Translations$shareme$history$en {
     other: '${n} photos & videos',
   );
 
+  /// en: '(one) {1 photo} (other) {{n} photos}'
+  String photoCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 photo',
+    other: '${n} photos',
+  );
+
+  /// en: '(one) {1 video} (other) {{n} videos}'
+  String videoCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 video',
+    other: '${n} videos',
+  );
+
   /// en: '(one) {1 file} (other) {{n} files}'
   String fileCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
     n,
@@ -1793,6 +1843,12 @@ class Translations$shareme$pair$en {
   /// en: 'Pair a new device'
   String get hostTitle => 'Pair a new device';
 
+  /// en: 'Scan it with Shuttle on your phone'
+  String get scanMe => 'Scan it with Shuttle on your phone';
+
+  /// en: 'Another computer?'
+  String get otherPc => 'Another computer?';
+
   /// en: 'On your phone, open Shuttle, tap the scan button at the top right of the home screen, and point it at this code.'
   String get pairHostHint => 'On your phone, open Shuttle, tap the scan button at the top right of the home screen, and point it at this code.';
 
@@ -1829,13 +1885,11 @@ class Translations$shareme$pair$en {
   /// en: 'Paired'
   String get doneTitle => 'Paired';
 
-  /// en: 'From now on, on the same Wi-Fi, the two devices find each other. Files from {name} are accepted automatically; you can change this in Settings.'
-  String doneAuto({required Object name}) =>
-      'From now on, on the same Wi-Fi, the two devices find each other. Files from ${name} are accepted automatically; you can change this in Settings.';
+  /// en: 'Files from {name} are accepted from now on'
+  String doneAuto({required Object name}) => 'Files from ${name} are accepted from now on';
 
-  /// en: 'From now on, on the same Wi-Fi, the two devices find each other. Files from {name} still ask you first; you can accept them automatically in Settings.'
-  String doneAsk({required Object name}) =>
-      'From now on, on the same Wi-Fi, the two devices find each other. Files from ${name} still ask you first; you can accept them automatically in Settings.';
+  /// en: 'Files from {name} will ask you first'
+  String doneAsk({required Object name}) => 'Files from ${name} will ask you first';
 
   /// en: 'Done'
   String get done => 'Done';
@@ -1866,20 +1920,20 @@ class Translations$shareme$pair$en {
   /// en: 'Nobody confirmed in time. Not paired.'
   String get failTimeout => 'Nobody confirmed in time. Not paired.';
 
-  /// en: 'Pairing didn't finish (the messages didn't match). Scan again.'
-  String get failProtocol => 'Pairing didn\'t finish (the messages didn\'t match). Scan again.';
+  /// en: 'Pairing didn't finish (the messages didn't match). Please try again.'
+  String get failProtocol => 'Pairing didn\'t finish (the messages didn\'t match). Please try again.';
 
   /// en: 'Scan to pair'
   String get scanTitle => 'Scan to pair';
 
-  /// en: 'Fit the QR code on your computer screen in the frame'
-  String get scanFrame => 'Fit the QR code on your computer screen in the frame';
+  /// en: 'Scan the code on your computer'
+  String get scanFrame => 'Scan the code on your computer';
 
   /// en: 'How to show the code on your computer'
   String get scanHowTitle => 'How to show the code on your computer';
 
-  /// en: 'Open Shuttle on your computer, click "Add device", then point this phone at the code on the screen.'
-  String get scanHowBody => 'Open Shuttle on your computer, click "Add device", then point this phone at the code on the screen.';
+  /// en: 'On the computer, open Shuttle and click Add device'
+  String get scanHowBody => 'On the computer, open Shuttle and click Add device';
 
   /// en: 'That's not a Shuttle pairing code'
   String get notOurCode => 'That\'s not a Shuttle pairing code';
@@ -1974,8 +2028,8 @@ class Translations$shareme$pair$en {
   /// en: 'Type the code shown on {name}'
   String typedEnter({required Object name}) => 'Type the code shown on ${name}';
 
-  /// en: 'Typing each other's code makes sure you're connected to that computer, not to something pretending to be it.'
-  String get typedHint => 'Typing each other\'s code makes sure you\'re connected to that computer, not to something pretending to be it.';
+  /// en: 'Typing both codes proves neither side is an impostor'
+  String get typedHint => 'Typing both codes proves neither side is an impostor';
 
   /// en: 'That's not it. Check the screen of {name} again (tries left: {n}).'
   String typedWrong({required Object name, required Object n}) => 'That\'s not it. Check the screen of ${name} again (tries left: ${n}).';
@@ -1989,9 +2043,9 @@ class Translations$shareme$pair$en {
   /// en: '{name} runs an older Shuttle. Update it first, then pair.'
   String failNearbyOutdated({required Object name}) => '${name} runs an older Shuttle. Update it first, then pair.';
 
-  /// en: '{n} wrong codes, so pairing was canceled. If you typed them right, another device may be pretending to be the other computer. Don't pair on this network for now.'
+  /// en: '{n} wrong codes, so pairing was canceled. If you typed them right, another device may be impersonating it. Don't pair on this network for now.'
   String failCodeMismatch({required Object n}) =>
-      '${n} wrong codes, so pairing was canceled. If you typed them right, another device may be pretending to be the other computer. Don\'t pair on this network for now.';
+      '${n} wrong codes, so pairing was canceled. If you typed them right, another device may be impersonating it. Don\'t pair on this network for now.';
 }
 
 // Path: shareme.settings
@@ -2104,9 +2158,9 @@ class Translations$shareme$settings$en {
   /// en: 'Not connected'
   String get tailscaleNotConnected => 'Not connected';
 
-  /// en: 'Install Tailscale on both devices with the same account. When they're not on the same Wi-Fi, Shuttle connects through it (encrypted, no third-party server).'
+  /// en: 'Install Tailscale on both devices with the same account. When they're not on the same Wi-Fi, Shuttle connects through it, encrypted all the way.'
   String get crossNetworkNote =>
-      'Install Tailscale on both devices with the same account. When they\'re not on the same Wi-Fi, Shuttle connects through it (encrypted, no third-party server).';
+      'Install Tailscale on both devices with the same account. When they\'re not on the same Wi-Fi, Shuttle connects through it, encrypted all the way.';
 
   /// en: 'This device'
   String get thisDevice => 'This device';
@@ -2120,8 +2174,8 @@ class Translations$shareme$settings$en {
   /// en: 'Accept from every device'
   String get modeAll => 'Accept from every device';
 
-  /// en: 'Not recommended: anyone on the same Wi-Fi can save files to your phone'
-  String get modeAllWarn => 'Not recommended: anyone on the same Wi-Fi can save files to your phone';
+  /// en: 'Not recommended: anyone on the same Wi-Fi can save files here'
+  String get modeAllWarn => 'Not recommended: anyone on the same Wi-Fi can save files here';
 
   /// en: 'Save location'
   String get saveLocation => 'Save location';
@@ -2229,11 +2283,135 @@ class Translations$shareme$settings$en {
   /// en: 'Scan this computer's QR code with your phone'
   String get pairNewDesktopNote => 'Scan this computer\'s QR code with your phone';
 
-  /// en: 'Remove {name} from my devices?'
-  String removeTitle({required Object name}) => 'Remove ${name} from my devices?';
+  /// en: 'Scan, or open in a browser'
+  String get linkHint => 'Scan, or open in a browser';
 
-  /// en: 'Files from it will need your confirmation again.'
-  String get removeBody => 'Files from it will need your confirmation again.';
+  /// en: 'Copy link'
+  String get copyLink => 'Copy link';
+
+  /// en: 'Other addresses'
+  String get otherAddresses => 'Other addresses';
+
+  /// en: 'Not connected to a network'
+  String get noNetwork => 'Not connected to a network';
+
+  /// en: 'Keep window on top'
+  String get alwaysOnTop => 'Keep window on top';
+
+  /// en: 'Animations'
+  String get animations => 'Animations';
+
+  /// en: 'Close to tray'
+  String get minimizeToTray => 'Close to tray';
+
+  /// en: 'Start hidden at sign-in'
+  String get launchMinimized => 'Start hidden at sign-in';
+
+  /// en: 'Show in the "Send to" menu'
+  String get contextMenu => 'Show in the "Send to" menu';
+
+  /// en: 'Remember window position'
+  String get saveWindow => 'Remember window position';
+
+  /// en: 'Check files after receiving'
+  String get verifyChecksums => 'Check files after receiving';
+
+  /// en: 'Add checksums when sending'
+  String get createChecksums => 'Add checksums when sending';
+
+  /// en: 'Auto-accept when sharing by link'
+  String get linkAutoAccept => 'Auto-accept when sharing by link';
+
+  /// en: 'Receiving'
+  String get server => 'Receiving';
+
+  /// en: 'On'
+  String get serverOn => 'On';
+
+  /// en: 'Off'
+  String get serverOff => 'Off';
+
+  /// en: 'Restart receiving to apply the changes'
+  String get needRestart => 'Restart receiving to apply the changes';
+
+  /// en: 'Restart'
+  String get restart => 'Restart';
+
+  /// en: 'Start'
+  String get start => 'Start';
+
+  /// en: 'Stop'
+  String get stop => 'Stop';
+
+  /// en: 'Device type'
+  String get deviceType => 'Device type';
+
+  /// en: 'Device model'
+  String get deviceModel => 'Device model';
+
+  /// en: 'Port'
+  String get port => 'Port';
+
+  /// en: 'Networks'
+  String get networks => 'Networks';
+
+  /// en: 'All'
+  String get networksAll => 'All';
+
+  /// en: 'Some'
+  String get networksSome => 'Some';
+
+  /// en: 'Scan timeout (ms)'
+  String get scanTimeout => 'Scan timeout (ms)';
+
+  /// en: 'Encryption'
+  String get encryption => 'Encryption';
+
+  /// en: 'Turn encryption off?'
+  String get encryptionOffTitle => 'Turn encryption off?';
+
+  /// en: 'People on the same Wi-Fi could see what you send.'
+  String get encryptionOffBody => 'People on the same Wi-Fi could see what you send.';
+
+  /// en: 'Turn off'
+  String get encryptionOffConfirm => 'Turn off';
+
+  /// en: 'Keep it on'
+  String get encryptionKeep => 'Keep it on';
+
+  /// en: 'Network'
+  String get network => 'Network';
+
+  /// en: 'Enter a number from 1024 to 65535'
+  String get portRange => 'Enter a number from 1024 to 65535';
+
+  /// en: 'Enter an address from 224.0.0.0 to 239.255.255.255'
+  String get multicastRange => 'Enter an address from 224.0.0.0 to 239.255.255.255';
+
+  /// en: 'Enter a number from 100 to 60000'
+  String get timeoutRange => 'Enter a number from 100 to 60000';
+
+  /// en: 'Multicast address'
+  String get multicast => 'Multicast address';
+
+  /// en: 'With a custom port or multicast address other devices may not find you (default {port}, {address})'
+  String customNetwork({required Object port, required Object address}) =>
+      'With a custom port or multicast address other devices may not find you (default ${port}, ${address})';
+
+  /// en: 'Phone'
+  String get typeMobile => 'Phone';
+
+  /// en: 'Computer'
+  String get typeDesktop => 'Computer';
+
+  /// en: 'Other'
+  String get typeOther => 'Other';
+
+  /// en: 'Remove {name}?'
+  String removeTitle({required Object name}) => 'Remove ${name}?';
+
+  /// en: 'You'll be asked again before accepting from it.'
+  String get removeBody => 'You\'ll be asked again before accepting from it.';
 
   /// en: 'Remove'
   String get remove => 'Remove';
@@ -2265,9 +2443,9 @@ class Translations$shareme$settings$en {
   /// en: 'Transfer on mobile data'
   String get mobileData => 'Transfer on mobile data';
 
-  /// en: 'Install Tailscale on both devices, sign in with the same account, then pair by QR code once. When they're not on the same Wi-Fi, they'll connect through Tailscale automatically (encrypted, no server of ours involved).'
+  /// en: 'Install Tailscale on both devices, sign in with the same account, then pair by QR code once. When they're not on the same Wi-Fi, they'll connect through it automatically, encrypted all the way.'
   String get mobileDataNote =>
-      'Install Tailscale on both devices, sign in with the same account, then pair by QR code once. When they\'re not on the same Wi-Fi, they\'ll connect through Tailscale automatically (encrypted, no server of ours involved).';
+      'Install Tailscale on both devices, sign in with the same account, then pair by QR code once. When they\'re not on the same Wi-Fi, they\'ll connect through it automatically, encrypted all the way.';
 
   /// en: 'This device is on Tailscale: {ip}'
   String tailscaleOn({required Object ip}) => 'This device is on Tailscale: ${ip}';

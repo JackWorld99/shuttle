@@ -4,11 +4,11 @@ import 'package:localsend_app/config/shareme_theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/favorite_device.dart';
 import 'package:localsend_app/pages/language_page.dart';
+import 'package:localsend_app/pages/shareme_advanced_page.dart';
 import 'package:localsend_app/pages/shareme_pair_host_page.dart';
 import 'package:localsend_app/pages/shareme_pair_scan_page.dart';
 import 'package:localsend_app/pages/shareme_verify_device.dart';
 import 'package:localsend_app/pages/tabs/send_tab_vm.dart';
-import 'package:localsend_app/pages/tabs/settings_tab.dart';
 import 'package:localsend_app/pages/tabs/settings_tab_controller.dart';
 import 'package:localsend_app/pages/web_share_page.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
@@ -28,8 +28,13 @@ import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/shareme_format.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart' show isTailscaleIp;
 import 'package:localsend_app/widget/dialogs/pin_dialog.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:localsend_app/widget/shareme/confirm_remove_device.dart';
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
+import 'package:localsend_app/widget/shareme/motion.dart';
+import 'package:localsend_app/widget/shareme/setting_rows.dart';
+import 'package:localsend_app/widget/shareme/sm_card.dart';
+import 'package:localsend_app/widget/shareme/sm_sheets.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -53,7 +58,7 @@ class SmSettingsPage extends StatefulWidget {
   State<SmSettingsPage> createState() => _SmSettingsPageState();
 }
 
-class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBindingObserver {
+class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBindingObserver, SmTabState {
   PermissionStatus? _notification;
   PermissionStatus? _battery;
   PermissionStatus? _mediaLocation;
@@ -67,6 +72,10 @@ class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBin
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void onTabShown() {
     // ignore: discarded_futures
     _refreshStatus();
     // ignore: discarded_futures
@@ -133,25 +142,10 @@ class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBin
   }
 
   Future<void> _rename(String current) async {
-    final controller = TextEditingController(text: current);
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(t.shareme.settings.rename),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 40,
-          decoration: InputDecoration(hintText: t.shareme.settings.renameHint),
-          onSubmitted: (v) => Navigator.of(context).pop(v),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(t.shareme.settings.cancel)),
-          TextButton(onPressed: () => Navigator.of(context).pop(controller.text), child: Text(t.shareme.settings.save)),
-        ],
-      ),
+      builder: (_) => _RenameDialog(current: current),
     );
-    controller.dispose();
     final alias = name?.trim();
     if (alias == null || alias.isEmpty || alias == current || !mounted) return;
     await ref.notifier(settingsProvider).setAlias(alias);
@@ -167,11 +161,7 @@ class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBin
         : settings.quickSaveFromFavorites
         ? _ReceiveMode.favorites
         : _ReceiveMode.ask;
-    final mode = await showModalBottomSheet<_ReceiveMode>(
-      context: context,
-      useSafeArea: true,
-      builder: (context) => _ReceiveModeSheet(current: current),
-    );
+    final mode = await showSmSheet<_ReceiveMode>(context, builder: (context) => _ReceiveModeSheet(current: current));
     if (mode == null || mode == current) return;
     final notifier = ref.notifier(settingsProvider);
     await notifier.setQuickSave(mode == _ReceiveMode.all);
@@ -209,9 +199,9 @@ class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBin
 
   Future<void> _pickTheme() async {
     final current = ref.read(settingsProvider).theme;
-    final mode = await showModalBottomSheet<ThemeMode>(
-      context: context,
-      useSafeArea: true,
+    final mode = await showSmSheet<ThemeMode>(
+      context,
+      maxWidth: 380,
       builder: (context) => _ChoiceSheet<ThemeMode>(
         title: t.shareme.settings.theme,
         current: current,
@@ -231,12 +221,23 @@ class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBin
     final c = context.sm;
     final s = t.shareme.settings;
     final verifyPage = verified ? null : verifyPageFor(peerType: knownDeviceType(f.fingerprint), online: online);
-    final remove = IconButton(
+    final remove = PopupMenuButton<void>(
       tooltip: s.remove,
-      icon: Icon(LucideIcons.x, size: 20, color: c.ink3),
-      onPressed: () async => _removeFavorite(f),
+      icon: Icon(LucideIcons.ellipsis, size: 20, color: c.ink3),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          onTap: () async => _removeFavorite(f),
+          child: Row(
+            children: [
+              Icon(LucideIcons.unlink, size: 18, color: c.warn),
+              const SizedBox(width: 12),
+              Text(s.remove, style: ShareMeText.body.copyWith(color: c.warn)),
+            ],
+          ),
+        ),
+      ],
     );
-    return _Row(
+    return SmRow(
       lead: DeviceAvatar(
         deviceType: knownDeviceType(f.fingerprint),
         size: 40,
@@ -285,11 +286,11 @@ class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBin
       ThemeMode.system => s.themeSystem,
     };
 
-    return ListView(
+    return SmPageList(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(22, 14, 22, 6),
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 12),
           child: Text(s.title, style: ShareMeText.headline.copyWith(color: c.ink)),
         ),
 
@@ -300,31 +301,32 @@ class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBin
         ],
 
         // This device: avatar + name (as others see it) + rename
-        _Group(
+        SmRowGroup(
           children: [
-            _Row(
+            SmRow(
               lead: DeviceAvatar(deviceType: checkPlatformIsDesktop() ? DeviceType.desktop : DeviceType.mobile, size: 46, mine: true),
               title: alias,
               titleStyle: ShareMeText.deviceName.copyWith(color: c.ink),
-              subtitle: s.renameHint,
-              trailing: IconButton(
-                tooltip: s.rename,
-                style: IconButton.styleFrom(backgroundColor: c.tonal),
-                icon: Icon(LucideIcons.pen, size: 18, color: c.ink),
-                onPressed: () async => _rename(alias),
-              ),
+              trailing: Icon(LucideIcons.pencil, size: 18, color: c.ink3),
               onTap: () async => _rename(alias),
             ),
           ],
         ),
 
         // Receive
-        _SectionTitle(s.receive),
-        _Group(
+        SmRowTitle(s.receive),
+        SmRowGroup(
           children: [
-            _Row(title: s.whenReceiving, value: receiveMode, trailing: const _Chevron(), onTap: _pickReceiveMode),
+            SmRow(
+              lead: const SmIconTile(icon: LucideIcons.inbox),
+              title: s.whenReceiving,
+              value: receiveMode,
+              trailing: const SmRowChevron(),
+              onTap: _pickReceiveMode,
+            ),
             if (checkPlatformWithFileSystem())
-              _Row(
+              SmRow(
+                lead: const SmIconTile(icon: LucideIcons.folderDown),
                 title: s.saveTo,
                 value: _folderName(settings.destination),
                 trailing: settings.destination != null
@@ -332,29 +334,32 @@ class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBin
                         onPressed: _resetDestination,
                         child: Text(s.resetLocation),
                       )
-                    : const _Chevron(),
+                    : const SmRowChevron(),
                 onTap: _pickDestination,
               ),
             if (checkPlatformWithGallery())
-              _Row(
+              SmRow(
+                lead: const SmIconTile(icon: LucideIcons.images),
                 title: s.galleryShort,
                 trailing: Switch(value: settings.saveToGallery, onChanged: (v) async => ref.notifier(settingsProvider).setSaveToGallery(v)),
                 onTap: () async => ref.notifier(settingsProvider).setSaveToGallery(!settings.saveToGallery),
               ),
             if (_android && _mediaLocation != null)
-              _Row(
+              SmRow(
+                lead: const SmIconTile(icon: LucideIcons.mapPin),
                 title: s.keepLocationShort,
                 value: _mediaLocation!.isGranted ? s.turnedOn : s.turnOn,
                 valueColor: _mediaLocation!.isGranted ? null : c.warn,
-                trailing: _mediaLocation!.isGranted ? null : const _Chevron(),
+                trailing: _mediaLocation!.isGranted ? null : const SmRowChevron(),
                 onTap: _mediaLocation!.isGranted ? null : () async => _request(Permission.accessMediaLocation, _mediaLocation),
               ),
             if (_android)
-              _Row(
+              SmRow(
+                lead: const SmIconTile(icon: LucideIcons.zap),
                 title: s.background,
                 value: backgroundMissing > 0 ? s.missing(n: backgroundMissing) : s.view,
                 valueColor: backgroundMissing > 0 ? c.warn : null,
-                trailing: const _Chevron(),
+                trailing: const SmRowChevron(),
                 onTap: () async {
                   await context.push(() => const _BackgroundPage());
                   await _refreshStatus();
@@ -364,17 +369,12 @@ class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBin
         ),
 
         // My devices
-        _SectionTitle(s.devices),
-        _Group(
+        SmRowTitle(s.devices),
+        SmRowGroup(
           children: [
-            if (favorites.isEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-                child: Text(s.devicesEmpty, style: ShareMeText.meta.copyWith(color: c.ink2)),
-              ),
             for (final f in favorites)
               _deviceRow(f, verified: verified.contains(f.fingerprint), online: nearby.firstWhereOrNull((d) => d.fingerprint == f.fingerprint)),
-            _Row(
+            SmRow(
               lead: const DeviceAvatar(size: 40, icon: LucideIcons.plus),
               title: t.shareme.home.addDevice,
               onTap: () async => context.push(() => checkPlatformIsDesktop() ? const SmPairHostPage() : const SmPairScanPage()),
@@ -383,24 +383,37 @@ class _SmSettingsPageState extends State<SmSettingsPage> with Refena, WidgetsBin
         ),
 
         // General
-        _SectionTitle(s.general),
-        _Group(
+        SmRowTitle(s.general),
+        SmRowGroup(
           children: [
             if (_autoStart != null)
-              _Row(
+              SmRow(
+                lead: const SmIconTile(icon: LucideIcons.power),
                 title: s.autoStart,
                 subtitle: s.autoStartNote,
                 trailing: Switch(value: _autoStart!, onChanged: (v) async => _setAutoStart(v)),
                 onTap: () async => _setAutoStart(!_autoStart!),
               ),
-            _Row(title: s.theme, value: theme, trailing: const _Chevron(), onTap: _pickTheme),
-            _Row(
+            SmRow(
+              lead: const SmIconTile(icon: LucideIcons.sunMoon),
+              title: s.theme,
+              value: theme,
+              trailing: const SmRowChevron(),
+              onTap: _pickTheme,
+            ),
+            SmRow(
+              lead: const SmIconTile(icon: LucideIcons.languages),
               title: s.language,
               value: settings.locale?.getLocaleName() ?? s.languageSystem,
-              trailing: const _Chevron(),
+              trailing: const SmRowChevron(),
               onTap: () async => context.push(() => const LanguagePage()),
             ),
-            _Row(title: s.moreShort, trailing: const _Chevron(), onTap: () async => context.push(() => const _SmMorePage())),
+            SmRow(
+              lead: const SmIconTile(icon: LucideIcons.ellipsis),
+              title: s.moreShort,
+              trailing: const SmRowChevron(),
+              onTap: () async => context.push(() => const _SmMorePage()),
+            ),
           ],
         ),
         Padding(
@@ -444,10 +457,10 @@ class _UpdateBanner extends StatelessWidget {
     final c = context.sm;
     final u = t.shareme.update;
     if (state.phase == SmUpdatePhase.verifyFailed) {
-      return _Group(
+      return SmRowGroup(
         children: [
-          _Row(
-            lead: _Lead(icon: LucideIcons.triangleAlert, color: c.warn, background: c.warnContainer),
+          SmRow(
+            lead: SmIconTile(icon: LucideIcons.triangleAlert, color: c.warn, background: c.warnContainer),
             title: u.verifyFailed,
             titleStyle: ShareMeText.body.copyWith(color: c.warn, fontWeight: FontWeight.w500, fontSize: 15.5),
           ),
@@ -455,18 +468,16 @@ class _UpdateBanner extends StatelessWidget {
       );
     }
     final busy = state.phase == SmUpdatePhase.downloading || state.phase == SmUpdatePhase.installing;
-    return _Group(
+    return SmRowGroup(
       children: [
-        _Row(
-          lead: _Lead(icon: LucideIcons.circleArrowUp, color: c.accent),
-          // Include the build number: two releases from the same day share a date, so the date alone can't tell them apart
-          title: u.available(
-            version: u.versionBuild(version: state.manifest!.version, build: '${state.manifest!.build}'),
-          ),
+        SmRow(
+          lead: SmIconTile(icon: LucideIcons.circleArrowUp, color: c.accent),
+          title: u.found,
           subtitle: switch (state.phase) {
             SmUpdatePhase.downloading => u.downloading(percent: (state.progress * 100).floor()),
             SmUpdatePhase.installing => u.installing,
-            _ => null,
+            // Include the build number: two releases from the same day share a date, so the date alone can't tell them apart
+            _ => u.versionBuild(version: state.manifest!.version, build: '${state.manifest!.build}'),
           },
           trailing: FilledButton(onPressed: busy ? null : onUpdate, child: Text(u.install)),
           onTap: busy ? null : onUpdate,
@@ -524,28 +535,28 @@ class _SmMorePageState extends State<_SmMorePage> with Refena {
     final update = ref.notifier(smUpdateProvider);
     final u = t.shareme.update;
     final updateBusy = updateState.phase == SmUpdatePhase.downloading || updateState.phase == SmUpdatePhase.installing;
-    return Scaffold(
+    return SmScaffold(
       appBar: AppBar(title: Text(s.moreShort)),
-      body: ListView(
+      body: SmPageList(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
-          _SectionTitle(s.receive),
-          _Group(
+          SmRowTitle(s.receive),
+          SmRowGroup(
             children: [
               // Surfaces LocalSend's existing "receive via link" and "receive PIN" options
-              _Row(
+              SmRow(
                 title: s.receiveLink,
                 subtitle: s.receiveLinkNote,
-                trailing: const _Chevron(),
+                trailing: const SmRowChevron(),
                 onTap: () async => context.push(() => const WebSharePage()),
               ),
-              _Row(
+              SmRow(
                 title: s.receivePin,
                 subtitle: s.receivePinNote,
                 trailing: Switch(value: settings.receivePin != null, onChanged: (_) async => _toggleReceivePin()),
                 onTap: _toggleReceivePin,
               ),
-              _Row(
+              SmRow(
                 title: s.saveToHistoryShort,
                 trailing: Switch(value: settings.saveToHistory, onChanged: (v) async => ref.notifier(settingsProvider).setSaveToHistory(v)),
                 onTap: () async => ref.notifier(settingsProvider).setSaveToHistory(!settings.saveToHistory),
@@ -554,35 +565,39 @@ class _SmMorePageState extends State<_SmMorePage> with Refena {
           ),
 
           // Across networks: via Tailscale (instead of running our own signaling server)
-          _SectionTitle(s.crossNetwork),
-          _Group(
+          SmRowTitle(s.crossNetwork),
+          SmRowGroup(
             children: [
-              _Row(
-                lead: _Lead(icon: LucideIcons.globe, color: tailscaleIp == null ? c.ink3 : c.ok),
-                title: s.tailscaleRow,
-                value: tailscaleIp == null ? s.tailscaleNotConnected : '${s.tailscaleConnected} · $tailscaleIp',
+              // The address is only of interest when something doesn't connect: hover or long-press
+              Tooltip(
+                message: tailscaleIp ?? '',
+                child: SmRow(
+                  lead: SmIconTile(icon: LucideIcons.globe, color: tailscaleIp == null ? c.ink3 : c.ok),
+                  title: s.tailscaleRow,
+                  value: tailscaleIp == null ? s.tailscaleNotConnected : s.tailscaleConnected,
+                ),
               ),
             ],
           ),
-          _Note(s.crossNetworkNote),
+          SmRowNote(s.crossNetworkNote),
 
-          _SectionTitle(s.thisDevice),
-          _Group(
+          SmRowTitle(s.thisDevice),
+          SmRowGroup(
             children: [
-              _Row(
+              SmRow(
                 title: s.fingerprintLabel,
                 subtitleWidget: Text(groupFingerprint(fingerprint), style: ShareMeText.data.copyWith(color: c.ink2)),
               ),
             ],
           ),
 
-          _SectionTitle(s.about),
-          _Group(
+          SmRowTitle(s.about),
+          SmRowGroup(
             children: [
               // Only the version and build number on the right (combined into one line, phones cut it to "2026.11.16 (2268…").
               // The "Based on LocalSend" attribution is on the "Open-source licenses" page (the UI doesn't name LocalSend, but
               // the attribution stays).
-              _Row(
+              SmRow(
                 title: s.version,
                 value: version.maybeWhen(
                   data: (v) => t.shareme.update.versionBuild(version: v.version, build: v.buildNumber),
@@ -594,7 +609,7 @@ class _SmMorePageState extends State<_SmMorePage> with Refena {
                 // Once a new version is found, this row becomes "New version … (…) · Update": it used to say only "New
                 // version available", which read as already updated, while the "Update" button was at the top of Settings
                 if (updateState.hasNewVersion && updateState.manifest != null)
-                  _Row(
+                  SmRow(
                     title: u.available(
                       version: u.versionBuild(version: updateState.manifest!.version, build: '${updateState.manifest!.build}'),
                     ),
@@ -610,7 +625,7 @@ class _SmMorePageState extends State<_SmMorePage> with Refena {
                     onTap: updateBusy ? null : () async => startShuttleUpdate(context, ref),
                   )
                 else
-                  _Row(
+                  SmRow(
                     title: u.check,
                     value: switch (updateState.phase) {
                       SmUpdatePhase.checking => u.checking,
@@ -622,22 +637,22 @@ class _SmMorePageState extends State<_SmMorePage> with Refena {
                     valueColor: updateState.phase == SmUpdatePhase.verifyFailed ? c.warn : null,
                     onTap: updateState.phase == SmUpdatePhase.checking ? null : () async => update.check(),
                   ),
-                _Row(
+                SmRow(
                   title: u.auto,
                   trailing: Switch(value: updateState.autoCheck, onChanged: (v) async => update.setAutoCheck(v)),
                   onTap: () async => update.setAutoCheck(!updateState.autoCheck),
                 ),
               ],
-              _Row(
+              SmRow(
                 title: s.license,
-                trailing: const _Chevron(),
+                trailing: const SmRowChevron(),
                 onTap: () => showLicensePage(context: context, applicationName: 'Shuttle', applicationLegalese: s.licenseNote),
               ),
-              _Row(
+              SmRow(
                 title: s.localsendSettings,
                 subtitle: s.localsendSettingsNote,
-                trailing: const _Chevron(),
-                onTap: () async => context.push(() => const _MoreSettingsPage()),
+                trailing: const SmRowChevron(),
+                onTap: () async => context.push(() => const SmAdvancedPage()),
               ),
             ],
           ),
@@ -711,12 +726,12 @@ class _BackgroundPageState extends State<_BackgroundPage> with WidgetsBindingObs
   @override
   Widget build(BuildContext context) {
     final s = t.shareme.settings;
-    return Scaffold(
+    return SmScaffold(
       appBar: AppBar(title: Text(s.background)),
-      body: ListView(
+      body: SmPageList(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
-          _Group(
+          SmRowGroup(
             children: [
               if (_notification != null)
                 _StatusRow(
@@ -750,14 +765,14 @@ class _BackgroundPageState extends State<_BackgroundPage> with WidgetsBindingObs
                         },
                 ),
               if (_xiaomi) ...[
-                _Row(
-                  lead: const _Lead(icon: LucideIcons.rocket),
+                SmRow(
+                  lead: const SmIconTile(icon: LucideIcons.rocket),
                   title: s.autostart,
                   trailing: const _External(),
                   onTap: () async => _openMiui(android_channel.openAutostartSettingsAndroid),
                 ),
-                _Row(
-                  lead: const _Lead(icon: LucideIcons.batteryCharging),
+                SmRow(
+                  lead: const SmIconTile(icon: LucideIcons.batteryCharging),
                   title: s.powerSaver,
                   trailing: const _External(),
                   onTap: () async => _openMiui(android_channel.openBatterySaverSettingsAndroid),
@@ -765,10 +780,52 @@ class _BackgroundPageState extends State<_BackgroundPage> with WidgetsBindingObs
               ],
             ],
           ),
-          if (_xiaomi) _Note(s.backgroundPageNote),
-          _Note(s.backgroundLimit),
+          if (_xiaomi) SmRowNote(s.backgroundPageNote),
+          SmRowNote(s.backgroundLimit),
         ],
       ),
+    );
+  }
+}
+
+/// Owns its text controller, which must live until the dialog has faded out.
+class _RenameDialog extends StatefulWidget {
+  final String current;
+
+  const _RenameDialog({required this.current});
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final _controller = TextEditingController(text: widget.current);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(t.shareme.settings.rename),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: 40,
+        decoration: InputDecoration(hintText: t.shareme.settings.renameHint, fillColor: context.sm.bg, counterText: ''),
+        onSubmitted: (v) => Navigator.of(context).pop(v),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(t.shareme.settings.cancel)),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          style: TextButton.styleFrom(foregroundColor: context.sm.accent),
+          child: Text(t.shareme.settings.save),
+        ),
+      ],
     );
   }
 }
@@ -792,11 +849,12 @@ class _ChoiceSheet<T> extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              padding: const EdgeInsets.fromLTRB(22, 0, 22, 8),
               child: Text(title, style: ShareMeText.title.copyWith(color: c.ink, fontSize: 18)),
             ),
             for (final e in options.entries)
               ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 22),
                 leading: Icon(e.key == current ? LucideIcons.circleCheck : LucideIcons.circle, color: e.key == current ? c.accent : c.ink3),
                 title: Text(
                   e.value,
@@ -807,21 +865,6 @@ class _ChoiceSheet<T> extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// A small gray note below a group (only used on the "More" and "Background receiving" pages).
-class _Note extends StatelessWidget {
-  final String text;
-
-  const _Note(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 10, 28, 0),
-      child: Text(text, style: ShareMeText.meta.copyWith(color: context.sm.ink2, fontSize: 12.5)),
     );
   }
 }
@@ -841,6 +884,7 @@ class _ReceiveModeSheet extends StatelessWidget {
     Widget option(_ReceiveMode mode, String title, {String? warn}) {
       final selected = mode == current;
       return ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 22),
         leading: Icon(selected ? LucideIcons.circleCheck : LucideIcons.circle, color: selected ? c.accent : c.ink3),
         title: Text(
           title,
@@ -859,7 +903,7 @@ class _ReceiveModeSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              padding: const EdgeInsets.fromLTRB(22, 0, 22, 8),
               child: Text(s.whenReceiving, style: ShareMeText.title.copyWith(color: c.ink, fontSize: 18)),
             ),
             option(_ReceiveMode.favorites, s.modeVerified),
@@ -872,150 +916,10 @@ class _ReceiveModeSheet extends StatelessWidget {
   }
 }
 
-/// "More settings": LocalSend's original settings page, unchanged.
-class _MoreSettingsPage extends StatelessWidget {
-  const _MoreSettingsPage();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(t.shareme.settings.more)),
-      body: const SettingsTab(),
-    );
-  }
-}
-
 // ───────────────────────── Widgets ─────────────────────────
 
-class _SectionTitle extends StatelessWidget {
-  final String title;
-
-  const _SectionTitle(this.title);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 22, 16, 8),
-      child: Text(title, style: ShareMeText.section.copyWith(color: context.sm.ink2)),
-    );
-  }
-}
-
-class _Group extends StatelessWidget {
-  final List<Widget> children;
-
-  const _Group({required this.children});
-
-  static bool _hasLead(Widget w) => w is _StatusRow || (w is _Row && w.lead != null);
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.sm;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: DecoratedBox(
-        decoration: smCardDecoration(c),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
-          child: Material(
-            type: MaterialType.transparency,
-            child: Column(
-              children: [
-                for (var i = 0; i < children.length; i++) ...[
-                  if (i > 0) Divider(height: 1, thickness: 1, indent: _hasLead(children[i]) ? 70 : 16, color: c.line),
-                  children[i],
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Settings row: [leading icon] title / (description)  [current value] [trailing], min height 56. The main page only uses
-/// "title + current value"; descriptions are only used on sub-pages.
-class _Row extends StatelessWidget {
-  final Widget? lead;
-  final String title;
-  final TextStyle? titleStyle;
-  final String? subtitle;
-  final Widget? subtitleWidget;
-  final Color? subtitleColor;
-
-  /// The gray current value on the right (e.g. "My devices: automatic")
-  final String? value;
-  final Color? valueColor;
-  final Widget? trailing;
-  final VoidCallback? onTap;
-
-  const _Row({
-    required this.title,
-    this.lead,
-    this.titleStyle,
-    this.subtitle,
-    this.subtitleWidget,
-    this.subtitleColor,
-    this.value,
-    this.valueColor,
-    this.trailing,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.sm;
-    final sub = subtitleWidget ?? (subtitle == null ? null : Text(subtitle!, style: ShareMeText.meta.copyWith(color: subtitleColor ?? c.ink2)));
-    return InkWell(
-      onTap: onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              if (lead != null) ...[lead!, const SizedBox(width: 14)],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: titleStyle ?? ShareMeText.body.copyWith(color: c.ink, fontWeight: FontWeight.w500, fontSize: 15.5),
-                    ),
-                    if (sub != null) ...[const SizedBox(height: 2), sub],
-                  ],
-                ),
-              ),
-              if (value != null) ...[
-                const SizedBox(width: 12),
-                // Right-aligned: Flexible takes the right part and Align pins the value to the edge ("On" used to float mid-row)
-                Flexible(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      value!,
-                      style: ShareMeText.meta.copyWith(color: valueColor ?? c.ink2, fontSize: 14),
-                      textAlign: TextAlign.end,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ],
-              if (trailing != null) ...[const SizedBox(width: 6), trailing!],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// An item whose real status can be read: a green check when OK, otherwise an amber warning + tap to fix it.
-class _StatusRow extends StatelessWidget {
+class _StatusRow extends StatelessWidget implements SmHasLead {
   final String title;
   final bool ok;
   final String okText;
@@ -1025,10 +929,15 @@ class _StatusRow extends StatelessWidget {
   const _StatusRow({required this.title, required this.ok, required this.okText, required this.notOkText, required this.onTap});
 
   @override
+  bool get hasLead => true;
+
+  @override
   Widget build(BuildContext context) {
     final c = context.sm;
-    return _Row(
-      lead: ok ? _Lead(icon: LucideIcons.check, color: c.ok) : _Lead(icon: LucideIcons.triangleAlert, color: c.warn, background: c.warnContainer),
+    return SmRow(
+      lead: ok
+          ? SmIconTile(icon: LucideIcons.check, color: c.ok)
+          : SmIconTile(icon: LucideIcons.triangleAlert, color: c.warn, background: c.warnContainer),
       title: title,
       titleStyle: ok ? null : ShareMeText.body.copyWith(color: c.warn, fontWeight: FontWeight.w500, fontSize: 15.5),
       subtitle: ok ? okText : notOkText,
@@ -1037,33 +946,6 @@ class _StatusRow extends StatelessWidget {
       onTap: onTap,
     );
   }
-}
-
-class _Lead extends StatelessWidget {
-  final IconData icon;
-  final Color? color;
-  final Color? background;
-
-  const _Lead({required this.icon, this.color, this.background});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.sm;
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(color: background ?? c.tonal, borderRadius: BorderRadius.circular(12)),
-      alignment: Alignment.center,
-      child: Icon(icon, size: 20, color: color ?? c.ink),
-    );
-  }
-}
-
-class _Chevron extends StatelessWidget {
-  const _Chevron();
-
-  @override
-  Widget build(BuildContext context) => Icon(LucideIcons.chevronRight, size: 20, color: context.sm.ink3);
 }
 
 class _External extends StatelessWidget {

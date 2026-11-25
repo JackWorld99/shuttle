@@ -2,6 +2,7 @@
 // (gold → vermilion → deep red) are used only for primary buttons, "my devices" avatars and a few accents.
 // No Material You dynamic color: the warm palette is the identity.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 
 /// Semantic colors. Every color outside the ColorScheme (online, warning, accent, card shadow, etc.) comes from here:
 /// `Theme.of(context).extension<ShareMeColors>()!` or `context.sm`.
@@ -49,6 +50,34 @@ class ShareMeColors extends ThemeExtension<ShareMeColors> {
   /// Soft card shadow (barely visible in dark mode, which relies on tonal layering instead)
   final List<BoxShadow> cardShadow;
 
+  /// Cards: a barely visible vertical tint (translucent in dark mode, so the backdrop glows through) and a hairline edge
+  final Color cardTop;
+  final Color cardBottom;
+  final Color cardBorder;
+
+  /// Neutral icon tiles (unknown or offline devices, files): a light vertical tint ([smTileDecoration])
+  final Color tileTop;
+  final Color tileBottom;
+
+  /// Selected navigation item and filter chip: translucent warm fill
+  final Color selected;
+
+  /// Hairline edge of secondary buttons
+  final Color buttonEdge;
+
+  /// Background of bottom sheets, dialogs and menus (a touch warmer than [group])
+  final Color sheet;
+
+  /// Ambient backdrop ([SmAmbient]): base gradient plus two soft warm glows, top right and left middle
+  final Color bgTop;
+  final Color bgBottom;
+  final Color glow1;
+  final Color glow2;
+
+  /// Primary buttons: vertical gradient and the sheen along the top edge
+  final List<Color> buttonGradient;
+  final Color buttonSheen;
+
   const ShareMeColors({
     required this.bg,
     required this.group,
@@ -75,6 +104,20 @@ class ShareMeColors extends ThemeExtension<ShareMeColors> {
     required this.okInk,
     required this.snack,
     required this.cardShadow,
+    required this.cardTop,
+    required this.cardBottom,
+    required this.cardBorder,
+    required this.tileTop,
+    required this.tileBottom,
+    required this.selected,
+    required this.buttonEdge,
+    required this.sheet,
+    required this.bgTop,
+    required this.bgBottom,
+    required this.glow1,
+    required this.glow2,
+    required this.buttonGradient,
+    required this.buttonSheen,
   });
 
   static const light = ShareMeColors(
@@ -84,7 +127,7 @@ class ShareMeColors extends ThemeExtension<ShareMeColors> {
     tonalStrong: Color(0xFFE1DED7),
     ink: Color(0xFF16171A),
     ink2: Color(0xFF5B5E62),
-    ink3: Color(0xFF8E9195),
+    ink3: Color(0xFF6B6F74),
     line: Color(0xFFECEAE5),
     onInk: Color(0xFFF7F6F3),
     seal: Color(0xFFD44A27),
@@ -104,19 +147,35 @@ class ShareMeColors extends ThemeExtension<ShareMeColors> {
     snack: Color(0xFF1E1F22),
     cardShadow: [
       BoxShadow(color: Color(0x0D16171A), blurRadius: 2, offset: Offset(0, 1)),
-      BoxShadow(color: Color(0x3316171A), blurRadius: 28, spreadRadius: -16, offset: Offset(0, 12)),
+      BoxShadow(color: Color(0x2E7A3A14), blurRadius: 34, spreadRadius: -18, offset: Offset(0, 18)),
     ],
+    cardTop: Color(0xFFFFFFFF),
+    cardBottom: Color(0xFFFDFBF7),
+    cardBorder: Color(0xE6FFFFFF),
+    tileTop: Color(0xFFF8F5F0),
+    tileBottom: Color(0xFFEAE6DE),
+    selected: Color(0x38F2783C),
+    buttonEdge: Color(0x2E7A3A14),
+    sheet: Color(0xFFFFFDFA),
+    bgTop: Color(0xFFFBF7F0),
+    bgBottom: Color(0xFFF4F1EA),
+    glow1: Color(0x66F4A23F),
+    glow2: Color(0x33E2582B),
+    buttonGradient: [Color(0xFFE0592C), Color(0xFFC63C1F), Color(0xFFB5301C)],
+    buttonSheen: Color(0x66FFFFFF),
   );
 
   static const dark = ShareMeColors(
-    bg: Color(0xFF0F1012),
-    group: Color(0xFF1B1C1F),
-    tonal: Color(0xFF26282C),
-    tonalStrong: Color(0xFF34363B),
-    ink: Color(0xFFEDEEF0),
-    ink2: Color(0xFFA6A9AE),
-    ink3: Color(0xFF767A80),
-    line: Color(0xFF2A2C30),
+    // Warm blacks and grays: next to the warm light, neutral ones looked blue
+    bg: Color(0xFF100E0C),
+    group: Color(0xFF1E1B19),
+    // Translucent white, so the warm backdrop shows through (opaque grays looked bluish on the glass cards)
+    tonal: Color(0x1CFFFFFF),
+    tonalStrong: Color(0x2EFFFFFF),
+    ink: Color(0xFFF3EFEB),
+    ink2: Color(0xFFB4ACA5),
+    ink3: Color(0xFF9A928B),
+    line: Color(0x1CFFFFFF),
     onInk: Color(0xFF0F1012),
     seal: Color(0xFFE0572F),
     onSeal: Color(0xFFFFFFFF),
@@ -132,10 +191,23 @@ class ShareMeColors extends ThemeExtension<ShareMeColors> {
     accentSoft: Color(0xFF382820),
     okSoft: Color(0xFF22332D),
     okInk: Color(0xFF6FD49E),
-    snack: Color(0xFF2B2D31),
-    cardShadow: [
-      BoxShadow(color: Color(0xB3000000), blurRadius: 30, spreadRadius: -20, offset: Offset(0, 16)),
-    ],
+    snack: Color(0xFF2E2926),
+    // None: the cards are translucent, so a shadow would show through them; the hairline edge and the tint separate them enough
+    cardShadow: [],
+    cardTop: Color(0x1AFFF4EA),
+    cardBottom: Color(0x0DFFF4EA),
+    cardBorder: Color(0x21FFF4EA),
+    tileTop: Color(0x26FFFFFF),
+    tileBottom: Color(0x12FFFFFF),
+    selected: Color(0x40F2783C),
+    buttonEdge: Color(0x24FFFFFF),
+    sheet: Color(0xFF1C1A19),
+    bgTop: Color(0xFF151210),
+    bgBottom: Color(0xFF0B0908),
+    glow1: Color(0x66F2783C),
+    glow2: Color(0x45C0301F),
+    buttonGradient: [Color(0xFFDD5A2E), Color(0xFFC23D21), Color(0xFFAF2E1C)],
+    buttonSheen: Color(0x5CFFFFFF),
   );
 
   @override
@@ -171,6 +243,20 @@ class ShareMeColors extends ThemeExtension<ShareMeColors> {
       okInk: l(okInk, other.okInk),
       snack: l(snack, other.snack),
       cardShadow: BoxShadow.lerpList(cardShadow, other.cardShadow, t) ?? other.cardShadow,
+      cardTop: l(cardTop, other.cardTop),
+      cardBottom: l(cardBottom, other.cardBottom),
+      cardBorder: l(cardBorder, other.cardBorder),
+      tileTop: l(tileTop, other.tileTop),
+      tileBottom: l(tileBottom, other.tileBottom),
+      selected: l(selected, other.selected),
+      buttonEdge: l(buttonEdge, other.buttonEdge),
+      sheet: l(sheet, other.sheet),
+      bgTop: l(bgTop, other.bgTop),
+      bgBottom: l(bgBottom, other.bgBottom),
+      glow1: l(glow1, other.glow1),
+      glow2: l(glow2, other.glow2),
+      buttonGradient: [for (var i = 0; i < buttonGradient.length; i++) l(buttonGradient[i], other.buttonGradient[i])],
+      buttonSheen: l(buttonSheen, other.buttonSheen),
     );
   }
 }
@@ -186,17 +272,47 @@ class ShareMeGradients {
     stops: [0, 0.45, 1],
   );
 
-  /// Primary button: slightly darker than the avatar; white text on the middle color has a contrast ratio of about 4.8:1.
-  static const button = LinearGradient(colors: [Color(0xFFDE5329), Color(0xFFBF2E1E)]);
-
   /// Warm drop shadow under primary buttons and avatars
   static const glow = Color(0xFFBF2E1E);
 }
 
-/// Card: white background (dark gray in dark mode) + rounded corners + soft shadow. Used for grouped lists on the home page,
-/// in settings and in sheets.
-BoxDecoration smCardDecoration(ShareMeColors c, {double radius = ShareMeSize.radiusGroup}) =>
-    BoxDecoration(color: c.group, borderRadius: BorderRadius.circular(radius), boxShadow: c.cardShadow);
+/// Card: white (slightly warm) in light mode, dark glass in dark mode; hairline edge, rounded corners, soft shadow. Used for grouped
+/// lists on the home page, in settings and in sheets.
+BoxDecoration smCardDecoration(ShareMeColors c, {double radius = ShareMeSize.radiusGroup}) => BoxDecoration(
+  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [c.cardTop, c.cardBottom]),
+  borderRadius: BorderRadius.circular(radius),
+  border: Border.all(color: c.cardBorder),
+  boxShadow: c.cardShadow,
+);
+
+/// A neutral icon tile: unknown or offline devices, file type icons. [color] replaces the neutral tint (e.g. the amber warning tile).
+BoxDecoration smTileDecoration(ShareMeColors c, {required double radius, Color? color}) => BoxDecoration(
+  color: color,
+  gradient: color != null ? null : LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [c.tileTop, c.tileBottom]),
+  borderRadius: BorderRadius.circular(radius),
+  border: color != null ? null : Border.all(color: c.line),
+);
+
+/// Colors of a file type tile: a light warm tint per kind instead of the same gray for everything. Opaque, because tiles are stacked.
+({Color top, Color bottom, Color icon}) smKindColors({required bool dark, required String kind}) => switch ((kind, dark)) {
+  ('image', false) => (top: const Color(0xFFFFEBD3), bottom: const Color(0xFFF9D2A8), icon: const Color(0xFFA94E17)),
+  ('video', false) => (top: const Color(0xFFFFEAE3), bottom: const Color(0xFFF8D0C2), icon: const Color(0xFFAE3A22)),
+  ('pdf', false) => (top: const Color(0xFFFDE8E5), bottom: const Color(0xFFF4CAC4), icon: const Color(0xFFA52A20)),
+  ('text', false) => (top: const Color(0xFFF7F1E7), bottom: const Color(0xFFE9DFCF), icon: const Color(0xFF6B5640)),
+  (_, false) => (top: const Color(0xFFF6F3ED), bottom: const Color(0xFFE6E1D8), icon: const Color(0xFF5E5A54)),
+  ('image', true) => (top: const Color(0xFF5C3F25), bottom: const Color(0xFF422E1D), icon: const Color(0xFFF6BE8A)),
+  ('video', true) => (top: const Color(0xFF583226), bottom: const Color(0xFF40261F), icon: const Color(0xFFF4A891)),
+  ('pdf', true) => (top: const Color(0xFF572B28), bottom: const Color(0xFF402120), icon: const Color(0xFFF29C92)),
+  ('text', true) => (top: const Color(0xFF3A342C), bottom: const Color(0xFF2B2722), icon: const Color(0xFFD2C6B6)),
+  (_, true) => (top: const Color(0xFF36322F), bottom: const Color(0xFF292623), icon: const Color(0xFFBEB6AF)),
+};
+
+/// A recessed area inside a sheet or dialog (the received text, the device list): darker than the sheet, with a hairline edge.
+BoxDecoration smInsetDecoration(ShareMeColors c, {double radius = ShareMeSize.radiusButton}) => BoxDecoration(
+  color: c.bg,
+  borderRadius: BorderRadius.circular(radius),
+  border: Border.all(color: c.line),
+);
 
 /// Colors for the Material ColorScheme, so built-in Material widgets (and LocalSend's original pages) use the same warm palette.
 class ShareMeScheme {
@@ -364,6 +480,14 @@ extension ShareMeThemeContext on BuildContext {
   ShareMeColors get sm => Theme.of(this).extension<ShareMeColors>()!;
 }
 
+/// Status bar icons that stay readable: white on a dark page, dark on a light one. The navigation bar is left as the app set it at
+/// startup (updateSystemOverlayStyle).
+SystemUiOverlayStyle smStatusBar({required bool darkBackground}) => SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: darkBackground ? Brightness.light : Brightness.dark, // Android
+  statusBarBrightness: darkBackground ? Brightness.dark : Brightness.light, // iOS
+);
+
 /// The Shuttle theme. A null [sansFamily] uses the system font (the Android default).
 ThemeData buildShareMeTheme(Brightness brightness, {String? sansFamily}) {
   final dark = brightness == Brightness.dark;
@@ -396,39 +520,43 @@ ThemeData buildShareMeTheme(Brightness brightness, {String? sansFamily}) {
       selectionHandleColor: c.accent,
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: c.bg,
+      // Transparent so the ambient backdrop shows through. The status bar icons are stated explicitly because Flutter would guess
+      // them from the (transparent) background.
+      backgroundColor: Colors.transparent,
+      systemOverlayStyle: smStatusBar(darkBackground: dark),
       foregroundColor: c.ink,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
-      titleTextStyle: ShareMeText.title.copyWith(color: c.ink, fontSize: 18),
+      titleTextStyle: ShareMeText.title.copyWith(fontFamily: sansFamily, color: c.ink, fontSize: 18),
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: ShareMeSize.navBarH,
-      backgroundColor: c.bg,
+      backgroundColor: Colors.transparent, // the home screen's ambient backdrop shows through
       surfaceTintColor: Colors.transparent,
       elevation: 0,
-      indicatorColor: c.accentSoft,
+      indicatorColor: c.selected, // translucent: stays visible on the warm backdrop
       indicatorShape: const StadiumBorder(),
       iconTheme: WidgetStateProperty.resolveWith(
         (s) => IconThemeData(color: s.contains(WidgetState.selected) ? c.accent : c.ink2, size: ShareMeSize.icon),
       ),
       labelTextStyle: WidgetStateProperty.resolveWith(
         (s) => ShareMeText.labelSm.copyWith(
+          fontFamily: sansFamily,
           color: s.contains(WidgetState.selected) ? c.ink : c.ink2,
           fontWeight: s.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
         ),
       ),
     ),
     navigationRailTheme: NavigationRailThemeData(
-      backgroundColor: c.group,
-      indicatorColor: c.accentSoft,
+      backgroundColor: Colors.transparent, // the ambient backdrop shows through
+      indicatorColor: c.selected, // translucent: stays visible on the warm backdrop
       indicatorShape: const StadiumBorder(),
       selectedIconTheme: IconThemeData(color: c.accent, size: ShareMeSize.icon),
       unselectedIconTheme: IconThemeData(color: c.ink2, size: ShareMeSize.icon),
-      selectedLabelTextStyle: ShareMeText.labelSm.copyWith(color: c.ink, fontWeight: FontWeight.w700),
-      unselectedLabelTextStyle: ShareMeText.labelSm.copyWith(color: c.ink2),
+      selectedLabelTextStyle: ShareMeText.labelSm.copyWith(fontFamily: sansFamily, color: c.ink, fontWeight: FontWeight.w700),
+      unselectedLabelTextStyle: ShareMeText.labelSm.copyWith(fontFamily: sansFamily, color: c.ink2),
     ),
     // Primary button: the icon's warm gradient + a warm drop shadow (one per screen).
     // The gradient is painted by backgroundBuilder; when disabled it falls back to the tonal background.
@@ -442,39 +570,29 @@ ThemeData buildShareMeTheme(Brightness brightness, {String? sansFamily}) {
             shadowColor: Colors.transparent,
             minimumSize: const Size(64, ShareMeSize.buttonH),
             shape: buttonShape,
-            textStyle: ShareMeText.labelPrimary,
+            textStyle: ShareMeText.labelPrimary.copyWith(fontFamily: sansFamily),
             padding: const EdgeInsets.symmetric(horizontal: 24),
           ).copyWith(
-            backgroundBuilder: (context, states, child) => states.contains(WidgetState.disabled)
-                ? child ?? const SizedBox.shrink()
-                : DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: ShareMeGradients.button,
-                      borderRadius: BorderRadius.circular(ShareMeSize.radiusButton),
-                      boxShadow: [
-                        BoxShadow(
-                          color: ShareMeGradients.glow.withValues(alpha: dark ? 0.35 : 0.42),
-                          blurRadius: 22,
-                          spreadRadius: -10,
-                          offset: const Offset(0, 12),
-                        ),
-                      ],
-                    ),
-                    child: child,
-                  ),
+            // Vertical warm gradient, a fine light along the top edge and a warm drop shadow; gives way a little when pressed
+            backgroundBuilder: (context, states, child) =>
+                states.contains(WidgetState.disabled) ? child ?? const SizedBox.shrink() : _PrimaryFill(colors: c, states: states, child: child),
           ),
     ),
-    // LocalSend's existing pages use ElevatedButton a lot: style it as the secondary (tonal) button, without a shadow
+    // Secondary buttons: a white button with a hairline edge and a faint shadow in light mode, translucent in dark mode (the old
+    // flat gray almost vanished on the warm backdrop). LocalSend's own pages pass their own colors, which still work
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: c.tonal,
+        backgroundColor: dark ? c.tonal : c.group,
         foregroundColor: c.ink,
-        elevation: 0,
-        shadowColor: Colors.transparent,
+        disabledBackgroundColor: c.tonal,
+        disabledForegroundColor: c.ink3,
+        elevation: dark ? 0 : 1.5,
+        shadowColor: const Color(0x667A3A14),
         surfaceTintColor: Colors.transparent,
+        side: BorderSide(color: c.buttonEdge),
         minimumSize: const Size(64, ShareMeSize.buttonHSm),
         shape: buttonShape,
-        textStyle: ShareMeText.label,
+        textStyle: ShareMeText.label.copyWith(fontFamily: sansFamily),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
     ),
@@ -484,14 +602,14 @@ ThemeData buildShareMeTheme(Brightness brightness, {String? sansFamily}) {
         side: BorderSide(color: c.line),
         minimumSize: const Size(64, ShareMeSize.buttonHSm),
         shape: buttonShape,
-        textStyle: ShareMeText.label,
+        textStyle: ShareMeText.label.copyWith(fontFamily: sansFamily),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: c.ink,
         shape: buttonShape,
-        textStyle: ShareMeText.label,
+        textStyle: ShareMeText.label.copyWith(fontFamily: sansFamily),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
     ),
@@ -500,41 +618,50 @@ ThemeData buildShareMeTheme(Brightness brightness, {String? sansFamily}) {
       filled: true,
       fillColor: c.group,
       border: inputBorder,
-      enabledBorder: inputBorder,
+      enabledBorder: inputBorder.copyWith(borderSide: BorderSide(color: c.line)),
       focusedBorder: inputBorder.copyWith(borderSide: BorderSide(color: c.accent, width: 1.5)),
       contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-      hintStyle: ShareMeText.body.copyWith(color: c.ink3),
+      hintStyle: ShareMeText.body.copyWith(fontFamily: sansFamily, color: c.ink3),
     ),
     cardTheme: CardThemeData(
       color: c.group,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup)),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: c.cardBorder),
+        borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
+      ),
     ),
     listTileTheme: ListTileThemeData(
       iconColor: c.ink2,
       textColor: c.ink,
-      titleTextStyle: ShareMeText.title.copyWith(color: c.ink),
-      subtitleTextStyle: ShareMeText.meta.copyWith(color: c.ink2),
+      titleTextStyle: ShareMeText.title.copyWith(fontFamily: sansFamily, color: c.ink),
+      subtitleTextStyle: ShareMeText.meta.copyWith(fontFamily: sansFamily, color: c.ink2),
     ),
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: c.group,
+      backgroundColor: c.sheet,
       surfaceTintColor: Colors.transparent,
       showDragHandle: true,
       dragHandleColor: c.ink3,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(ShareMeSize.radiusSheet))),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: c.cardBorder),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(ShareMeSize.radiusSheet)),
+      ),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: c.group,
+      backgroundColor: c.sheet,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ShareMeSize.radiusSheet)),
-      titleTextStyle: ShareMeText.title.copyWith(color: c.ink, fontSize: 18),
-      contentTextStyle: ShareMeText.body.copyWith(color: c.ink2),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: c.cardBorder),
+        borderRadius: BorderRadius.circular(ShareMeSize.radiusSheet),
+      ),
+      titleTextStyle: ShareMeText.title.copyWith(fontFamily: sansFamily, color: c.ink, fontSize: 18),
+      contentTextStyle: ShareMeText.body.copyWith(fontFamily: sansFamily, color: c.ink2),
     ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: c.snack,
-      contentTextStyle: ShareMeText.body.copyWith(color: const Color(0xFFF3F3F1)),
+      contentTextStyle: ShareMeText.body.copyWith(fontFamily: sansFamily, color: const Color(0xFFF3F3F1)),
       actionTextColor: const Color(0xFFFFB48C),
       behavior: SnackBarBehavior.floating,
       elevation: 6,
@@ -554,7 +681,7 @@ ThemeData buildShareMeTheme(Brightness brightness, {String? sansFamily}) {
     chipTheme: ChipThemeData(
       backgroundColor: c.tonal,
       selectedColor: c.ink,
-      labelStyle: ShareMeText.labelSm.copyWith(color: c.ink),
+      labelStyle: ShareMeText.labelSm.copyWith(fontFamily: sansFamily, color: c.ink),
       side: BorderSide.none,
       shape: const StadiumBorder(),
     ),
@@ -569,12 +696,96 @@ ThemeData buildShareMeTheme(Brightness brightness, {String? sansFamily}) {
     progressIndicatorTheme: ProgressIndicatorThemeData(color: c.accent, linearTrackColor: c.tonalStrong, circularTrackColor: c.tonal),
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(color: c.snack, borderRadius: BorderRadius.circular(ShareMeSize.radiusTag)),
-      textStyle: ShareMeText.labelSm.copyWith(color: const Color(0xFFF3F3F1)),
+      textStyle: ShareMeText.labelSm.copyWith(fontFamily: sansFamily, color: const Color(0xFFF3F3F1)),
     ),
     popupMenuTheme: PopupMenuThemeData(
-      color: c.group,
+      color: c.sheet,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ShareMeSize.radiusButton)),
     ),
   );
+}
+
+/// Background of the primary buttons.
+class _PrimaryFill extends StatelessWidget {
+  final ShareMeColors colors;
+  final Set<WidgetState> states;
+  final Widget? child;
+
+  const _PrimaryFill({required this.colors, required this.states, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final pressed = states.contains(WidgetState.pressed);
+    final lit = states.contains(WidgetState.hovered) || states.contains(WidgetState.focused);
+    final radius = BorderRadius.circular(ShareMeSize.radiusButton);
+    return AnimatedScale(
+      scale: pressed ? 0.975 : 1,
+      duration: Duration(milliseconds: pressed ? 90 : 260),
+      curve: pressed ? Curves.easeOut : Curves.easeOutBack,
+      child: AnimatedContainer(
+        duration: ShareMeMotion.press,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: colors.buttonGradient, stops: const [0, 0.6, 1]),
+          borderRadius: radius,
+          boxShadow: [
+            BoxShadow(
+              color: ShareMeGradients.glow.withValues(alpha: pressed ? 0.25 : 0.42),
+              blurRadius: pressed ? 14 : 24,
+              spreadRadius: -10,
+              offset: Offset(0, pressed ? 6 : 13),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: [
+              // Hover lightens, pressing darkens
+              Positioned.fill(
+                child: AnimatedContainer(
+                  duration: ShareMeMotion.press,
+                  color: pressed
+                      ? const Color(0x1A000000)
+                      : lit
+                      ? const Color(0x14FFFFFF)
+                      : const Color(0x00FFFFFF),
+                ),
+              ),
+              Positioned.fill(child: CustomPaint(painter: _TopLight(colors.buttonSheen))),
+              child ?? const SizedBox.shrink(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A one-pixel light along the upper edge that fades out around the corners.
+class _TopLight extends CustomPainter {
+  final Color color;
+
+  const _TopLight(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final shape = RRect.fromRectAndRadius((Offset.zero & size).deflate(0.5), const Radius.circular(ShareMeSize.radiusButton - 0.5));
+    canvas.drawRRect(
+      shape,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [color, color.withValues(alpha: 0)],
+          stops: const [0, 0.45],
+        ).createShader(Offset.zero & size),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TopLight old) => old.color != color;
 }

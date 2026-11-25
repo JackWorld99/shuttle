@@ -27,9 +27,9 @@ final animationProvider = ViewProvider<bool>((ref) {
 }, debugLabel: 'animationProvider');
 
 void setDefaultRouteTransition() {
-  // use the "slide" transition for desktop
+  // Shuttle: a short fade on desktop (LocalSend slides the whole window sideways, which looks heavy on a large screen)
   if (checkPlatformIsDesktop()) {
-    Routerino.transition = RouterinoTransition.cupertino;
+    Routerino.transition = RouterinoTransition.fade(duration: const Duration(milliseconds: 200));
   } else {
     Routerino.transition = RouterinoTransition.material;
   }

@@ -9,6 +9,7 @@ import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/pages/tabs/send_tab_vm.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/widget/shareme/send_target_sheet.dart';
+import 'package:localsend_app/widget/shareme/sm_sheets.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:refena_flutter/refena_flutter.dart';
@@ -20,17 +21,16 @@ import 'package:uuid/uuid.dart';
 ///   a "Paste" suggestion appears at the top.
 /// - Below, the target is chosen ([SendTargetList], shared with the send-files sheet); the only online "My devices" entry is preselected.
 /// - Text is sent on its own, not added to the selected files, so it doesn't get mixed up with photos the user already picked.
-Future<void> showSendTextSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    isScrollControlled: true,
-    builder: (_) => const _SendTextSheet(),
-  );
+///
+/// [to]: the device (fingerprint) to send to unless the user picks another one
+Future<void> showSendTextSheet(BuildContext context, {String? to}) {
+  return showSmSheet<void>(context, maxWidth: 480, scroll: false, builder: (_) => _SendTextSheet(to: to));
 }
 
 class _SendTextSheet extends StatefulWidget {
-  const _SendTextSheet();
+  final String? to;
+
+  const _SendTextSheet({this.to});
 
   @override
   State<_SendTextSheet> createState() => _SendTextSheetState();
@@ -39,7 +39,7 @@ class _SendTextSheet extends StatefulWidget {
 class _SendTextSheetState extends State<_SendTextSheet> with Refena {
   final _controller = TextEditingController();
   String? _clipboard;
-  String? _selected;
+  late String? _selected = widget.to;
   bool _userChose = false;
 
   @override
@@ -114,9 +114,8 @@ class _SendTextSheetState extends State<_SendTextSheet> with Refena {
                 child: Text(t.shareme.text.sheetTitle, style: ShareMeText.title.copyWith(color: c.ink, fontSize: 18)),
               ),
               if (showClip)
-                Material(
-                  color: c.bg,
-                  borderRadius: BorderRadius.circular(ShareMeSize.radiusButton),
+                DecoratedBox(
+                  decoration: smInsetDecoration(c),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
                     child: Row(
@@ -160,14 +159,7 @@ class _SendTextSheetState extends State<_SendTextSheet> with Refena {
                 decoration: InputDecoration(hintText: t.shareme.text.hint, fillColor: c.bg),
                 style: ShareMeText.body.copyWith(color: c.ink),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 6, 4, 10),
-                child: Text(
-                  t.shareme.text.count(n: text.characters.length),
-                  style: ShareMeText.data.copyWith(color: c.ink3),
-                  textAlign: TextAlign.right,
-                ),
-              ),
+              const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
                 child: Text(t.shareme.text.sendTo, style: ShareMeText.section.copyWith(color: c.ink2)),

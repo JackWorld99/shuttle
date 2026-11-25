@@ -21,6 +21,16 @@ String formatDuration(Duration d) {
   return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
 }
 
+/// Time left in words: "4 s", "1 min 20 s"
+String formatLeft(Duration d) =>
+    d.inSeconds < 60 ? t.shareme.time.seconds(n: d.inSeconds) : t.shareme.time.minSec(m: d.inMinutes, s: d.inSeconds % 60);
+
+/// "3 s left · 12.3 MB/s": only what is known, without the meaningless "0 s left" at the very end. Empty if nothing is known yet.
+String formatPace({required Duration? left, required double speed}) => [
+  if (left != null && left.inSeconds > 0) t.shareme.home.remaining(time: formatLeft(left)),
+  if (speed > 0) formatSpeed(speed),
+].join(' · ');
+
 /// "just now / 2 min ago / 3 h ago / 5 d ago"
 String formatAgo(DateTime time, {DateTime? now}) {
   final diff = (now ?? DateTime.now()).difference(time);

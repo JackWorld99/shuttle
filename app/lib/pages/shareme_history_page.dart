@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:localsend_app/config/shareme_theme.dart';
@@ -12,12 +14,17 @@ import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/native/channel/android_channel.dart' as android_channel;
 import 'package:localsend_app/util/native/file_picker.dart';
 import 'package:localsend_app/util/native/open_file.dart';
+import 'package:localsend_app/util/native/open_folder.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/shareme_format.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
+import 'package:localsend_app/widget/shareme/bottom_actions.dart';
+import 'package:localsend_app/widget/shareme/content_stack.dart';
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
 import 'package:localsend_app/widget/shareme/film_strip.dart';
 import 'package:localsend_app/widget/shareme/message_sheet.dart';
 import 'package:localsend_app/widget/shareme/send_text_sheet.dart' show looksLikeLink;
+import 'package:localsend_app/widget/shareme/sm_card.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:refena_flutter/refena_flutter.dart';
@@ -95,12 +102,15 @@ class _SmHistoryPageState extends State<SmHistoryPage> with Refena {
     final query = _query?.trim().toLowerCase() ?? '';
     final records = buildHistoryRecords(received, sent, _accepts(_filter)).where((r) => query.isEmpty || r.matches(query)).toList();
 
+    // One device only: its name on every row would just be noise
+    final showNames = records.map((r) => r.fingerprint ?? r.alias).toSet().length > 1;
+
     // A flat list of day headers and record rows. ListView.builder only builds the items visible on screen.
     final items = <_Item>[];
     for (final day in _groupByDay(records)) {
       items.add(_Item.day(_dayLabel(context, day.first.time)));
       for (var i = 0; i < day.length; i++) {
-        items.add(_Item.row(day[i], first: i == 0, last: i == day.length - 1));
+        items.add(_Item.row(day[i], index: i, count: day.length));
       }
     }
 
@@ -132,14 +142,17 @@ class _SmHistoryPageState extends State<SmHistoryPage> with Refena {
         if (_query != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: TextField(
-              controller: _search,
-              focusNode: _searchFocus,
-              textInputAction: TextInputAction.search,
-              onChanged: (v) => setState(() => _query = v),
-              decoration: InputDecoration(
-                hintText: t.shareme.history.searchHint,
-                prefixIcon: Icon(LucideIcons.search, size: 20, color: c.ink3),
+            child: Semantics(
+              container: true,
+              child: TextField(
+                controller: _search,
+                focusNode: _searchFocus,
+                textInputAction: TextInputAction.search,
+                onChanged: (v) => setState(() => _query = v),
+                decoration: InputDecoration(
+                  hintText: t.shareme.history.searchHint,
+                  prefixIcon: Icon(LucideIcons.search, size: 20, color: c.ink3),
+                ),
               ),
             ),
           ),
@@ -147,7 +160,7 @@ class _SmHistoryPageState extends State<SmHistoryPage> with Refena {
           height: 34 + 24,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             children: [
               for (final f in _Filter.values) ...[
                 _FilterChip(
@@ -184,40 +197,37 @@ class _SmHistoryPageState extends State<SmHistoryPage> with Refena {
       ],
     );
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 24),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      itemCount: 1 + items.length,
-      itemBuilder: (context, index) {
-        if (index == 0) return header;
-        final item = items[index - 1];
-        final record = item.record;
-        if (record == null) {
+    return LayoutBuilder(
+      builder: (context, box) => ListView.builder(
+        padding: EdgeInsets.only(bottom: 24) + EdgeInsets.symmetric(horizontal: smSideInset(box.maxWidth, maxWidth: 860)),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        itemCount: 1 + items.length,
+        itemBuilder: (context, index) {
+          if (index == 0) return header;
+          final item = items[index - 1];
+          final record = item.record;
+          if (record == null) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(22, 16, 16, 10),
+              child: Text(item.dayLabel!, style: ShareMeText.section.copyWith(color: c.ink2)),
+            );
+          }
+          // Rows of the same day form one card
           return Padding(
-            padding: const EdgeInsets.fromLTRB(22, 16, 16, 10),
-            child: Text(item.dayLabel!, style: ShareMeText.section.copyWith(color: c.ink2)),
-          );
-        }
-        // Rows of the same day form one card: the first row rounds the top corners, the last row the bottom ones
-        final radius = BorderRadius.vertical(
-          top: item.first ? const Radius.circular(ShareMeSize.radiusGroup) : Radius.zero,
-          bottom: item.last ? const Radius.circular(ShareMeSize.radiusGroup) : Radius.zero,
-        );
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Material(
-            color: c.group,
-            borderRadius: radius,
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                if (!item.first) Divider(height: 1, thickness: 1, indent: 78, color: c.line),
-                HistoryRecordRow(record: record, isMine: mine.contains(record.fingerprint)),
-              ],
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: SmCardSlice(
+              index: item.index,
+              count: item.count,
+              child: Column(
+                children: [
+                  if (item.index > 0) Divider(height: 1, thickness: 1, indent: 16, color: c.line),
+                  HistoryRecordRow(record: record, isMine: mine.contains(record.fingerprint), showName: showNames),
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -226,12 +236,14 @@ class _SmHistoryPageState extends State<SmHistoryPage> with Refena {
 class _Item {
   final String? dayLabel;
   final HistoryRecord? record;
-  final bool first;
-  final bool last;
 
-  const _Item.day(String label) : dayLabel = label, record = null, first = false, last = false;
+  /// Position within the day, and the number of rows of that day
+  final int index;
+  final int count;
 
-  const _Item.row(HistoryRecord r, {required this.first, required this.last}) : dayLabel = null, record = r;
+  const _Item.day(String label) : dayLabel = label, record = null, index = 0, count = 0;
+
+  const _Item.row(HistoryRecord r, {required this.index, required this.count}) : dayLabel = null, record = r;
 }
 
 // ───────────────────────── Data: merge both kinds of entries into "one row per batch" ─────────────────────────
@@ -445,6 +457,8 @@ String _messageTitle(String message) {
 
 String _filesTitle(HistoryRecord r) {
   final n = r.frames.length;
+  if (r.frames.every((f) => f.fileType == FileType.image)) return t.shareme.history.photoCount(n: n);
+  if (r.frames.every((f) => f.fileType == FileType.video)) return t.shareme.history.videoCount(n: n);
   if (n == 1) return r.frames.first.fileName;
   if (r.allMedia) return t.shareme.history.mediaCount(n: n);
   if (r.noMedia) return t.shareme.history.fileCount(n: n);
@@ -488,7 +502,7 @@ Future<void> _delete(BuildContext context, HistoryRecord r) async {
 
 // ───────────────────────── Widgets ─────────────────────────
 
-/// Filter chip: 34 high, radius 10, 1px `line` border; when selected, an ink background with onInk text.
+/// Filter chip: 34 high, pill, a small card; when selected, the same soft warm fill as the selected navigation item.
 class _FilterChip extends StatelessWidget {
   final String label;
   final bool selected;
@@ -499,23 +513,36 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.sm;
+    final onSelected = Theme.of(context).colorScheme.onPrimaryContainer;
+    // The whole height of the row can be tapped, not just the pill
     return Semantics(
+      container: true,
       selected: selected,
       button: true,
-      child: Material(
-        color: selected ? c.ink : Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: selected ? BorderSide.none : BorderSide(color: c.line),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: onTap,
-          child: Container(
-            height: 34,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            alignment: Alignment.center,
-            child: Text(label, style: ShareMeText.labelSm.copyWith(fontSize: 13.5, color: selected ? c.onInk : c.ink)),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true, // the pill inside is the button for screen readers
+        onTap: onTap,
+        child: Center(
+          child: Material(
+            color: selected ? c.selected : c.cardTop,
+            shape: StadiumBorder(side: BorderSide(color: selected ? c.accent.withValues(alpha: 0.5) : c.line)),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                child: Text(
+                  label,
+                  style: ShareMeText.labelSm.copyWith(
+                    fontSize: 13.5,
+                    height: 18 / 13.5,
+                    color: selected ? onSelected : c.ink,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -523,12 +550,16 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-/// History row: 48 preview | title and source | time. Also used by "Recent" on the desktop home page.
+/// History row. Several photos or videos: a line of text and the pictures themselves; anything else: preview | title | time. The
+/// small arrow says whether it was received (green) or sent (orange).
 class HistoryRecordRow extends StatelessWidget {
   final HistoryRecord record;
   final bool isMine;
 
-  const HistoryRecordRow({required this.record, required this.isMine, super.key});
+  /// Whether to say which device it was (records with several devices)
+  final bool showName;
+
+  const HistoryRecordRow({required this.record, required this.isMine, this.showName = true, super.key});
 
   Future<void> _open(BuildContext context) async {
     final r = record;
@@ -564,51 +595,84 @@ class HistoryRecordRow extends StatelessWidget {
     final title = message != null ? _messageTitle(message) : _filesTitle(r);
     final isQuote = message != null && !looksLikeLink(message);
 
-    final Widget subtitle;
-    if (failed) {
-      subtitle = Text(
-        t.shareme.history.sendFailed(reason: _failReason(r.sent!)),
-        style: ShareMeText.meta.copyWith(color: c.warn, fontSize: 12.5),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      );
-    } else {
-      final color = c.ink2;
-      final meta = ShareMeText.meta.copyWith(color: color, fontSize: 12.5);
-      subtitle = Row(
+    final meta = ShareMeText.meta.copyWith(color: c.ink2, fontSize: 13);
+    final who = showName || !isMine ? r.alias : '';
+    final rest = [
+      if (!isMine) t.shareme.history.unpaired,
+      if (message == null && r.bytes > 0) who.isEmpty ? formatSize(r.bytes) : ' · ${formatSize(r.bytes)}',
+    ].join();
+    final time = Text(_hhmm(r.time), style: ShareMeText.data.copyWith(fontSize: 12, color: c.ink3));
+    final pictures = failed ? const <FilmFrame>[] : r.frames.where((f) => _isMedia(f.fileType)).toList();
+
+    final Widget content;
+    if (pictures.length >= 2) {
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(r.outgoing ? LucideIcons.arrowUpRight : LucideIcons.arrowDownLeft, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(r.outgoing ? t.shareme.history.to : t.shareme.history.from, style: meta),
-          const SizedBox(width: 5),
-          if (isMine && r.fingerprint != null) ...[
-            DeviceAvatar(size: 16, mine: true, deviceType: knownDeviceType(r.fingerprint!)),
-            const SizedBox(width: 5),
-          ],
-          // A long name truncates only the name; the size always shows in full (at 1.25x text size "124.1 MB" was cut to "124.1 …")
-          Flexible(
-            child: Text(
-              isMine ? r.alias : '${r.alias}${t.shareme.history.unpaired}',
-              style: meta,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+          Row(
+            children: [
+              _Direction(outgoing: r.outgoing, size: 22),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: ShareMeText.body.copyWith(color: c.ink, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _Details(who: who, rest: rest, style: meta),
+              ),
+              const SizedBox(width: 8),
+              time,
+            ],
           ),
-          if (message == null && r.bytes > 0) ...[
-            Text(' · ', style: meta),
-            Text(formatSize(r.bytes), style: ShareMeText.data.copyWith(fontSize: 11.5, color: color), maxLines: 1, softWrap: false),
-          ],
-          if (r.undelivered > 0) ...[
-            Text(' · ', style: meta),
-            Flexible(
+          if (r.undelivered > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
               child: Text(
                 t.shareme.history.partFailed(n: r.undelivered),
                 style: meta.copyWith(color: c.warn),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
             ),
-          ],
+          const SizedBox(height: 12),
+          _Pictures(frames: pictures, total: r.frames.length),
+        ],
+      );
+    } else {
+      final below = failed
+          ? Text(
+              t.shareme.history.sendFailed(reason: _failReason(r.sent!)),
+              style: meta.copyWith(color: c.warn),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            )
+          : r.undelivered > 0
+          ? Text(
+              t.shareme.history.partFailed(n: r.undelivered),
+              style: meta.copyWith(color: c.warn),
+            )
+          : who.isEmpty && rest.isEmpty
+          ? null
+          : _Details(who: who, rest: rest, style: meta);
+      content = Row(
+        children: [
+          _Lead(record: r),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: ShareMeText.body.copyWith(color: c.ink, fontWeight: isQuote ? FontWeight.w400 : FontWeight.w500, height: 21 / 15),
+                  maxLines: message != null ? 2 : 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (below != null) ...[const SizedBox(height: 2), below],
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          time,
         ],
       );
     }
@@ -616,100 +680,160 @@ class HistoryRecordRow extends StatelessWidget {
     return InkWell(
       onTap: () async => _open(context),
       onLongPress: () async => _delete(context, r),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 72),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              _Lead(record: r),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // The time sits at the right end of the title row: it looks top-right as in the design, but the
-                    // second row (direction, device, size) can use the full width, so large text doesn't squeeze the name to "Te…"
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: ShareMeText.body.copyWith(color: c.ink, fontWeight: isQuote ? FontWeight.w400 : FontWeight.w500, height: 21 / 15),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(_hhmm(r.time), style: ShareMeText.data.copyWith(fontSize: 11.5, color: c.ink2)),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    subtitle,
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13), child: content),
     );
   }
 }
 
-/// Leading preview: two or more photos are stacked; a single one is a 48 thumbnail; text / link / file is a tonal square;
-/// a failure is an amber square.
+/// "My phone · 2.3 MB": a long name is cut short, never what follows it.
+class _Details extends StatelessWidget {
+  final String who;
+  final String rest;
+  final TextStyle style;
+
+  const _Details({required this.who, required this.rest, required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        if (who.isNotEmpty)
+          Flexible(
+            child: Text(who, style: style, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        if (rest.isNotEmpty) Text(rest, style: style, maxLines: 1),
+      ],
+    );
+  }
+}
+
+/// Received (green, arrow in) or sent (orange, arrow out).
+class _Direction extends StatelessWidget {
+  final bool outgoing;
+  final double size;
+
+  const _Direction({required this.outgoing, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.sm;
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: outgoing ? c.accent : c.ok, shape: BoxShape.circle),
+      child: Icon(outgoing ? LucideIcons.arrowUp : LucideIcons.arrowDown, size: size * 0.62, color: Colors.white),
+    );
+  }
+}
+
+/// Up to four pictures across the row; the last one counts the rest.
+class _Pictures extends StatelessWidget {
+  final List<FilmFrame> frames;
+  final int total;
+
+  const _Pictures({required this.frames, required this.total});
+
+  static const _gap = 8.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = frames.take(4).toList();
+    final more = total - shown.length;
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Four to a row on a phone; not larger than that in a wide window
+        final size = ((box.maxWidth - 3 * _gap) / 4).clamp(0.0, 92.0);
+        return Row(
+          children: [
+            for (final (i, f) in shown.indexed) ...[
+              if (i > 0) const SizedBox(width: _gap),
+              SizedBox.square(
+                dimension: size,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    FileThumb(frame: f, size: size, radius: 14),
+                    if (i == shown.length - 1 && more > 0)
+                      Container(
+                        decoration: BoxDecoration(color: const Color(0x8C000000), borderRadius: BorderRadius.circular(14)),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '+$more',
+                          style: ShareMeText.data.copyWith(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600, height: 1),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Leading preview of a compact row: the picture, or a tile for text, a link, a file or a failure, with the direction in its corner.
 class _Lead extends StatelessWidget {
   final HistoryRecord record;
 
   const _Lead({required this.record});
 
+  static const _size = 48.0;
+  static const _badge = 20.0;
+
   @override
   Widget build(BuildContext context) {
     final c = context.sm;
     final r = record;
-    Widget box(Widget child, {Color? color}) => Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(color: color ?? c.tonal, borderRadius: BorderRadius.circular(ShareMeSize.radiusTile)),
-      alignment: Alignment.center,
-      child: child,
-    );
-
-    if (r.failed) {
-      return box(Icon(LucideIcons.triangleAlert, size: 21, color: c.warn), color: c.warnContainer);
-    }
     final message = r.message;
-    if (message != null) {
-      return box(Icon(looksLikeLink(message) ? LucideIcons.link : LucideIcons.type, size: 21, color: c.ink));
-    }
-    final media = r.frames.where((f) => _isMedia(f.fileType)).toList();
-    if (media.length >= 2) {
-      // Two stacked: the second is offset 8 down-right with a group-colored border, so it looks laid on top
-      return SizedBox.square(
-        dimension: 48,
-        child: Stack(
-          children: [
-            FileThumb(frame: media[0], size: 40),
-            Positioned(
-              left: 8,
-              top: 8,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(ShareMeSize.radiusFrame + 2),
-                  border: Border.all(color: c.group, width: 2),
-                ),
-                child: FileThumb(frame: media[1], size: 40),
-              ),
-            ),
-          ],
-        ),
+    if (r.failed) {
+      return Container(
+        width: _size,
+        height: _size,
+        decoration: smTileDecoration(c, radius: 15, color: c.warnContainer),
+        alignment: Alignment.center,
+        child: Icon(LucideIcons.triangleAlert, size: 21, color: c.warn),
       );
     }
-    if (r.frames.isEmpty) return box(Icon(LucideIcons.file, size: 21, color: c.ink));
-    return FileThumb(frame: media.isNotEmpty ? media.first : r.frames.first, size: 48, radius: ShareMeSize.radiusTile);
+    final Widget tile;
+    if (message != null && looksLikeLink(message)) {
+      final colors = smKindColors(dark: Theme.of(context).brightness == Brightness.dark, kind: 'text');
+      tile = Container(
+        width: _size,
+        height: _size,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [colors.top, colors.bottom]),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: colors.icon.withValues(alpha: 0.12)),
+        ),
+        alignment: Alignment.center,
+        child: Icon(LucideIcons.link, size: 20, color: colors.icon),
+      );
+    } else {
+      final frame = message != null || r.frames.isEmpty
+          ? FilmFrame(fileName: message ?? '', fileType: FileType.text, path: null, isMessage: message != null)
+          : r.frames.firstWhere((f) => _isMedia(f.fileType), orElse: () => r.frames.first);
+      tile = FileThumb(frame: frame, size: _size, radius: 15);
+    }
+    return SizedBox.square(
+      dimension: _size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipPath(
+            clipper: const BadgeHole(size: _size, badge: _badge),
+            child: tile,
+          ),
+          BadgeHole.positioned(
+            size: _size,
+            badge: _badge,
+            child: _Direction(outgoing: r.outgoing, size: _badge),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -762,7 +886,7 @@ class _Empty extends StatelessWidget {
 
 // ───────────────────────── Batch details ─────────────────────────
 
-/// Opened from a photo / file row: title, source and time, film strip; received batches also show where they were saved.
+/// Opened from a photo / file row: the pictures as one block, other files below, and what wasn't delivered.
 class SmHistoryBatchPage extends StatelessWidget {
   final HistoryRecord record;
   final bool isMine;
@@ -774,123 +898,145 @@ class SmHistoryBatchPage extends StatelessWidget {
     final c = context.sm;
     final r = record;
     final sent = r.sent;
-    final when = _whenLabel(context, r.time);
-    final inGallery = r.received.where((e) => e.savedToGallery).toList();
-    final elsewhere = r.received.where((e) => !e.savedToGallery && e.path != null).toList();
+    final inGallery = r.received.any((e) => e.savedToGallery);
     final notDelivered = sent == null ? const <SentHistoryFile>[] : sent.files.where((f) => !f.delivered).toList();
+    final media = r.frames.where((f) => _isMedia(f.fileType)).toList();
+    final others = r.frames.where((f) => !_isMedia(f.fileType)).toList();
+    final folderFile = r.received.where((e) => !e.savedToGallery && e.path != null).firstOrNull;
 
-    return Scaffold(
-      appBar: AppBar(),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 24),
+    Future<void> open(FilmFrame f) async {
+      if (f.inGallery && checkPlatform([TargetPlatform.android])) {
+        await android_channel.openGallery();
+      } else if (f.path != null) {
+        await openFile(context, f.fileType, f.path!);
+      }
+    }
+
+    return SmScaffold(
+      appBar: AppBar(
+        actions: [
+          IconButton(
+            tooltip: t.shareme.history.deleteRecord,
+            icon: Icon(LucideIcons.trash2, color: c.ink2),
+            onPressed: () async {
+              await _delete(context, r);
+              if (context.mounted && !_stillExists(context, r)) Navigator.of(context).pop();
+            },
+          ),
+          const SizedBox(width: 6),
+        ],
+      ),
+      body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 4, 24, 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(
+            child: SmPageList(
+              maxWidth: 560,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                Text(
-                  r.failed
-                      ? t.shareme.history.partFailed(n: r.frames.length)
-                      : r.outgoing
-                      ? t.shareme.history.sentTitle(n: r.frames.length)
-                      : t.shareme.receive.receivedTitle(n: r.frames.length),
-                  style: ShareMeText.display.copyWith(color: c.ink),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  r.outgoing ? t.shareme.history.toAt(name: r.alias, time: when) : t.shareme.history.fromAt(name: r.alias, time: when),
-                  style: ShareMeText.meta.copyWith(color: c.ink2),
-                ),
-              ],
-            ),
-          ),
-          FilmStrip(
-            frames: r.frames,
-            fromAlias: r.alias,
-            totalBytes: r.bytes,
-            // Seal = delivered and the peer is in "My devices"; no seal if the whole batch wasn't delivered
-            sealFingerprint: isMine && !r.failed ? r.fingerprint : null,
-            verified: r.verified,
-            edgeLabel: r.outgoing ? t.shareme.history.edgeTo(name: r.alias) : null,
-            showOriginal: !r.failed,
-          ),
-          if (sent != null && (r.failed || notDelivered.isNotEmpty))
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    r.failed ? t.shareme.history.sendFailed(reason: _failReason(sent)) : t.shareme.history.partFailed(n: notDelivered.length),
-                    style: ShareMeText.title.copyWith(color: c.warn),
-                  ),
-                  if (!r.failed)
-                    for (final f in notDelivered)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text('${f.fileName} · ${t.shareme.history.notDelivered}', style: ShareMeText.meta.copyWith(color: c.ink2)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 0, 6, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          _Direction(outgoing: r.outgoing, size: 24),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _filesTitle(r),
+                              style: ShareMeText.display.copyWith(color: c.ink),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
-                ],
-              ),
-            ),
-          if (inGallery.isNotEmpty || elsewhere.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(t.shareme.receive.whereSaved, style: ShareMeText.section.copyWith(color: c.ink2)),
-                  const SizedBox(height: 10),
-                  Material(
-                    color: c.group,
-                    borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
-                    clipBehavior: Clip.antiAlias,
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              [r.alias, _whenLabel(context, r.time), if (r.bytes > 0) formatSize(r.bytes)].join(' · '),
+                              style: ShareMeText.body.copyWith(color: c.ink2, fontSize: 14),
+                            ),
+                          ),
+                          if (!r.failed) ...[const SizedBox(width: 12), OriginalChip(verified: r.verified)],
+                        ],
+                      ),
+                      if (r.failed)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Text(
+                            t.shareme.history.sendFailed(reason: _failReason(sent!)),
+                            style: ShareMeText.title.copyWith(color: c.warn),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (media.isNotEmpty) MediaMosaic(frames: media, onTap: (i) async => open(media[i])),
+                if (others.isNotEmpty) ...[
+                  if (media.isNotEmpty) const SizedBox(height: 14),
+                  SmCard(
                     child: Column(
                       children: [
-                        if (inGallery.isNotEmpty)
-                          ListTile(
-                            leading: Icon(LucideIcons.images, color: c.ink2),
-                            title: Text(t.shareme.receive.mediaItems(n: inGallery.length)),
-                            subtitle: Text(t.shareme.receive.savedToGallery, style: ShareMeText.meta.copyWith(color: c.ok)),
-                          ),
-                        for (final e in elsewhere)
-                          ListTile(
-                            leading: Icon(LucideIcons.file, color: c.ink2),
-                            title: Text(e.fileName, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(formatSize(e.fileSize), style: ShareMeText.data.copyWith(color: c.ink2)),
-                            trailing: TextButton(
-                              onPressed: () async => openFile(context, e.fileType, e.path!),
-                              child: Text(t.shareme.receive.open),
+                        for (final (i, f) in others.indexed) ...[
+                          if (i > 0) Divider(height: 1, thickness: 1, indent: 72, color: c.line),
+                          InkWell(
+                            onTap: f.path == null ? null : () async => open(f),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                              child: Row(
+                                children: [
+                                  FileThumb(frame: f, size: 44, radius: 13),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Text(
+                                      f.fileName,
+                                      style: ShareMeText.body.copyWith(color: c.ink, fontWeight: FontWeight.w500),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (f.path != null) Icon(LucideIcons.chevronRight, size: 20, color: c.ink3),
+                                ],
+                              ),
                             ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+                if (!r.failed && notDelivered.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 18, 6, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          t.shareme.history.partFailed(n: notDelivered.length),
+                          style: ShareMeText.title.copyWith(color: c.warn),
+                        ),
+                        for (final f in notDelivered)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(f.fileName, style: ShareMeText.meta.copyWith(color: c.ink2)),
                           ),
                       ],
                     ),
                   ),
-                  if (inGallery.isNotEmpty && checkPlatform([TargetPlatform.android])) ...[
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: () async => android_channel.openGallery(),
-                      style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(ShareMeSize.buttonH)),
-                      icon: const Icon(LucideIcons.images, size: 18),
-                      label: Text(t.shareme.receive.viewInGallery),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 26, 24, 0),
-            child: TextButton.icon(
-              onPressed: () async {
-                await _delete(context, r);
-                if (context.mounted && !_stillExists(context, r)) Navigator.of(context).pop();
-              },
-              style: TextButton.styleFrom(foregroundColor: c.warn),
-              icon: const Icon(LucideIcons.trash2, size: 18),
-              label: Text(t.shareme.history.deleteRecord),
+              ],
             ),
           ),
+          if (inGallery && checkPlatform([TargetPlatform.android]))
+            _BottomButton(label: t.shareme.receive.viewInGallery, onPressed: () async => android_channel.openGallery())
+          else if (folderFile != null && checkPlatformIsDesktop())
+            _BottomButton(
+              label: t.shareme.receive.openFolder,
+              onPressed: () async => openFolder(folderPath: File(folderFile.path!).parent.path),
+            ),
         ],
       ),
     );
@@ -901,5 +1047,29 @@ class SmHistoryBatchPage extends StatelessWidget {
     if (sent != null) return context.read(sentHistoryProvider).any((e) => e.id == sent.id);
     final ids = r.received.map((e) => e.id).toSet();
     return context.read(receiveHistoryProvider).any((e) => ids.contains(e.id));
+  }
+}
+
+class _BottomButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+
+  const _BottomButton({required this.label, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: SmMaxWidth(
+        maxHeightFree: true,
+        child: Padding(
+          padding: BottomActions.padding,
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton(onPressed: onPressed, child: Text(label)),
+          ),
+        ),
+      ),
+    );
   }
 }

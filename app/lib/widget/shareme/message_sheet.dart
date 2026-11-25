@@ -10,6 +10,7 @@ import 'package:localsend_app/provider/paired_devices_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
 import 'package:localsend_app/widget/shareme/send_text_sheet.dart' show looksLikeLink;
+import 'package:localsend_app/widget/shareme/sm_sheets.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:refena_flutter/refena_flutter.dart';
@@ -90,10 +91,10 @@ Future<void> showHistoryMessageSheet(
   required String? sealFingerprint,
 }) {
   final c = context.sm;
-  return showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    isScrollControlled: true,
+  return showSmSheet<void>(
+    context,
+    maxWidth: 480,
+    scroll: false,
     builder: (_) => SmMessageView(
       message: message,
       isLink: looksLikeLink(message),
@@ -186,7 +187,7 @@ class _SmMessageViewState extends State<SmMessageView> {
             Container(
               constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.45),
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: c.bg, borderRadius: BorderRadius.circular(ShareMeSize.radiusButton)),
+              decoration: smInsetDecoration(c),
               child: SingleChildScrollView(
                 child: url != null
                     ? Column(
@@ -195,8 +196,6 @@ class _SmMessageViewState extends State<SmMessageView> {
                           Text(url.host, style: ShareMeText.deviceName.copyWith(color: c.ink)),
                           const SizedBox(height: 6),
                           SelectableText(message.trim(), style: ShareMeText.data.copyWith(color: c.ink2, fontSize: 13, height: 1.5)),
-                          const SizedBox(height: 10),
-                          Text(t.shareme.text.linkNote, style: ShareMeText.meta.copyWith(color: c.ink3, fontSize: 12)),
                         ],
                       )
                     : SelectableText(message, style: ShareMeText.body.copyWith(color: c.ink)),

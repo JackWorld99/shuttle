@@ -11,8 +11,11 @@ import 'package:localsend_app/provider/security_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_protocol.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:localsend_app/widget/shareme/confirm_remove_device.dart';
 import 'package:localsend_app/widget/shareme/pair_widgets.dart';
+import 'package:localsend_app/widget/shareme/sm_card.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 
@@ -105,6 +108,9 @@ class _SmPairHostPageState extends State<SmPairHostPage> with Refena {
     }
   }
 
+  /// "Another computer?" was tapped
+  bool _otherPc = false;
+
   void _newCode() {
     _name.clear();
     _host?.renew();
@@ -128,8 +134,8 @@ class _SmPairHostPageState extends State<SmPairHostPage> with Refena {
     final c = context.sm;
     final s = t.shareme.pair;
     final host = _host;
-    return Scaffold(
-      appBar: AppBar(title: Text(s.hostTitle)),
+    return SmScaffold(
+      appBar: AppBar(title: host?.state.value.stage == PairHostStage.paired ? null : Text(s.hostTitle)),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
@@ -191,7 +197,12 @@ class _SmPairHostPageState extends State<SmPairHostPage> with Refena {
             ],
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup)),
+              // Always white, so cameras can read it in dark mode too
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
+                boxShadow: ShareMeColors.light.cardShadow,
+              ),
               child: SizedBox(
                 width: 260,
                 height: 260,
@@ -202,33 +213,33 @@ class _SmPairHostPageState extends State<SmPairHostPage> with Refena {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             Text(
-              s.pairHostHint,
-              style: ShareMeText.body.copyWith(color: c.ink),
+              s.scanMe,
+              style: ShareMeText.title.copyWith(color: c.ink, fontSize: 19),
               textAlign: TextAlign.center,
-            ),
-            if (host.acceptsNearby) ...[
-              const SizedBox(height: 10),
-              Text(
-                s.nearbyHostHint,
-                style: ShareMeText.body.copyWith(color: c.ink),
-                textAlign: TextAlign.center,
-              ),
-            ],
-            const SizedBox(height: 10),
-            Text(
-              s.hostOneUse,
-              style: ShareMeText.meta.copyWith(color: c.ink2),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              s.expiresIn(time: '$mm:$ss'),
-              style: ShareMeText.data.copyWith(color: c.ink2),
             ),
             const SizedBox(height: 8),
-            TextButton(onPressed: _newCode, child: Text(s.newCode)),
+            // How long the code still works; tap for a new one
+            TextButton.icon(
+              onPressed: _newCode,
+              icon: Icon(LucideIcons.refreshCw, size: 15, color: c.ink2),
+              label: Text('$mm:$ss', style: ShareMeText.data.copyWith(color: c.ink2, fontSize: 14)),
+            ),
+            if (host.acceptsNearby) ...[
+              const SizedBox(height: 18),
+              if (_otherPc)
+                Text(
+                  s.nearbyHostHint,
+                  style: ShareMeText.body.copyWith(color: c.ink2),
+                  textAlign: TextAlign.center,
+                )
+              else
+                TextButton(
+                  onPressed: () => setState(() => _otherPc = true),
+                  child: Text(s.otherPc, style: ShareMeText.label.copyWith(color: c.ink2)),
+                ),
+            ],
           ],
         );
       case PairHostStage.verifying:
@@ -302,15 +313,14 @@ class _SmPairHostPageState extends State<SmPairHostPage> with Refena {
       case PairHostStage.paired:
         final peer = st.peer!;
         final settings = context.watch(settingsProvider);
-        final me = context.read(securityProvider).certificateHash;
         final name = _name.text.trim().isEmpty ? peer.alias : _name.text.trim();
         return Column(
           children: [
-            const SizedBox(height: 12),
-            PairedDuo(myFingerprint: me, myName: host.self.alias, theirFingerprint: peer.fingerprint, theirName: name),
-            const SizedBox(height: 22),
-            Text(s.doneTitle, style: ShareMeText.display.copyWith(color: c.ink)),
-            const SizedBox(height: 10),
+            const SizedBox(height: 44),
+            PairedDuo(theirFingerprint: peer.fingerprint),
+            const SizedBox(height: 30),
+            Text(s.doneTitle, style: ShareMeText.display.copyWith(color: c.ink, fontSize: 30)),
+            const SizedBox(height: 8),
             Text(
               settings.quickSave || settings.quickSaveFromFavorites ? s.doneAuto(name: name) : s.doneAsk(name: name),
               style: ShareMeText.body.copyWith(color: c.ink2),
@@ -324,15 +334,8 @@ class _SmPairHostPageState extends State<SmPairHostPage> with Refena {
                 textAlign: TextAlign.center,
               ),
             ],
-            const SizedBox(height: 18),
-            TextField(
-              controller: _name,
-              maxLength: 32,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(labelText: s.nameIt, counterText: ''),
-            ),
-            const SizedBox(height: 20),
-            FilledButton(onPressed: () => _finish(peer), child: Text(s.done)),
+            const SizedBox(height: 26),
+            PairNameForm(controller: _name, onChanged: () => setState(() {}), onDone: () => _finish(peer)),
             const SizedBox(height: 8),
             TextButton(onPressed: () async => _removeNotMine(peer), child: Text(s.notMine)),
           ],
@@ -361,14 +364,8 @@ class _NearbyRequestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.sm;
     final s = t.shareme.pair;
-    return Container(
-      width: double.infinity,
+    return SmCard(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      decoration: BoxDecoration(
-        color: c.group,
-        borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
-        boxShadow: c.cardShadow,
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -7,6 +7,7 @@ import 'package:localsend_app/config/shareme_theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/util/shareme_format.dart';
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
+import 'package:localsend_app/widget/shareme/sm_card.dart';
 import 'package:localsend_app/widget/shareme/stamp.dart';
 import 'package:localsend_isolates/model/file_type.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -25,6 +26,9 @@ class FilmFrame {
   /// Gallery asset ID of a sent photo / video on this device (history page); when set, the system thumbnail is used directly.
   final String? assetId;
 
+  /// A thumbnail already in memory (some sent files)
+  final Uint8List? bytes;
+
   const FilmFrame({
     required this.fileName,
     required this.fileType,
@@ -32,6 +36,7 @@ class FilmFrame {
     this.isMessage = false,
     this.inGallery = false,
     this.assetId,
+    this.bytes,
   });
 }
 
@@ -52,7 +57,6 @@ class FilmStrip extends StatelessWidget {
   /// Pops the "Original" chip on the done page; no animation in lists.
   final bool animateStamp;
   final VoidCallback? onTap;
-  final BorderRadius? borderRadius;
 
   /// Start of the caption, "From {source}" by default; sent records use "Sent to {peer}".
   final String? edgeLabel;
@@ -71,7 +75,6 @@ class FilmStrip extends StatelessWidget {
     required this.verified,
     this.animateStamp = false,
     this.onTap,
-    this.borderRadius,
     this.edgeLabel,
     this.showOriginal = true,
     this.frameSize = 100,
@@ -82,10 +85,7 @@ class FilmStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.sm;
     final chip = showOriginal ? OriginalChip(verified: verified) : null;
-    return Material(
-      color: c.group,
-      borderRadius: borderRadius ?? BorderRadius.circular(ShareMeSize.radiusGroup),
-      clipBehavior: Clip.antiAlias,
+    return SmCard(
       child: InkWell(
         onTap: onTap,
         child: Padding(
@@ -175,40 +175,123 @@ class FileThumb extends StatelessWidget {
   final double size;
   final double? radius;
 
-  const FileThumb({required this.frame, this.size = 100, this.radius, super.key});
+  /// Width and height of a tile that isn't square ([size], its longer side, still decides the picture's resolution)
+  final Size? fit;
+
+  const FileThumb({required this.frame, this.size = 100, this.radius, this.fit, super.key});
 
   @override
   Widget build(BuildContext context) {
-    final c = context.sm;
     final path = frame.path;
+    final bytes = frame.bytes;
+    // Sharp on dense screens without decoding the full picture; a little extra because wide pictures are cropped to the tile
+    final pixels = (size * MediaQuery.devicePixelRatioOf(context) * 1.4).round().clamp(240, 1200);
+    final iconSize = (size * 0.27).clamp(0.0, 44.0);
+    final colors = smKindColors(
+      dark: Theme.of(context).brightness == Brightness.dark,
+      kind: frame.isMessage ? 'text' : frame.fileType.name,
+    );
     final fallback = Container(
-      color: c.tonal,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [colors.top, colors.bottom]),
+        border: Border.all(color: colors.icon.withValues(alpha: 0.12)),
+        borderRadius: BorderRadius.circular(radius ?? ShareMeSize.radiusFrame),
+      ),
       alignment: Alignment.center,
       child: switch (frame.fileType) {
-        _ when frame.isMessage => Icon(LucideIcons.type, color: c.ink, size: size * 0.26),
-        FileType.video => Icon(LucideIcons.play, color: c.ink, size: size * 0.28),
-        FileType.image => Icon(LucideIcons.image, color: c.ink, size: size * 0.26),
-        _ => Text(
-          fileExtension(frame.fileName),
-          style: ShareMeText.data.copyWith(color: c.ink, fontSize: size < 60 ? 11 : null, fontWeight: size < 60 ? FontWeight.w600 : null),
-          maxLines: 1,
-          overflow: TextOverflow.clip,
+        _ when frame.isMessage => Icon(LucideIcons.type, color: colors.icon, size: iconSize),
+        FileType.video => Icon(LucideIcons.play, color: colors.icon, size: iconSize),
+        FileType.image => Icon(LucideIcons.image, color: colors.icon, size: iconSize),
+        _ => Padding(
+          padding: EdgeInsets.symmetric(horizontal: size * 0.08),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              fileExtension(frame.fileName),
+              style: ShareMeText.data.copyWith(
+                color: colors.icon,
+                fontSize: (size * 0.22).clamp(11.0, 30.0),
+                height: 1.2,
+                fontWeight: FontWeight.w700,
+              ),
+              maxLines: 1,
+            ),
+          ),
         ),
       },
     );
     final canShowImage = frame.fileType == FileType.image && path != null && !path.startsWith('content://') && File(path).existsSync();
     final fromGallery = (frame.inGallery || frame.assetId != null) && (frame.fileType == FileType.image || frame.fileType == FileType.video);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius ?? ShareMeSize.radiusFrame),
-      child: SizedBox.square(
-        dimension: size,
-        // With a gallery asset ID prefer the system thumbnail (fast, and videos get a picture too)
-        child: canShowImage && frame.assetId == null
-            ? Image.file(File(path), fit: BoxFit.cover, cacheWidth: 240, errorBuilder: (_, _, _) => fallback)
-            : fromGallery
-            ? _GalleryThumb(frame: frame, fallback: fallback, small: size < 60)
-            : fallback,
-      ),
+    // With a gallery asset ID prefer the system thumbnail (fast, and videos get a picture too)
+    final picture = canShowImage && frame.assetId == null
+        ? Image.file(
+            File(path),
+            fit: BoxFit.cover,
+            cacheWidth: pixels,
+            gaplessPlayback: true,
+            frameBuilder: (context, child, frame, sync) => sync ? child : _FadeOver(fallback: fallback, ready: frame != null, child: child),
+            errorBuilder: (_, _, _) => fallback,
+          )
+        : fromGallery
+        ? _GalleryThumb(
+            // A list reuses its elements: without the key, the picture loaded for one file stays for the next
+            key: ValueKey('${frame.assetId ?? frame.fileName}@$pixels'),
+            frame: frame,
+            fallback: fallback,
+            small: size < 60,
+            pixels: pixels,
+          )
+        : bytes != null
+        ? Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            cacheWidth: pixels,
+            gaplessPlayback: true,
+            frameBuilder: (context, child, frame, sync) => sync ? child : _FadeOver(fallback: fallback, ready: frame != null, child: child),
+            errorBuilder: (_, _, _) => fallback,
+          )
+        : null;
+    final box = SizedBox.fromSize(size: fit ?? Size.square(size), child: picture ?? fallback);
+    // The type tile has round corners of its own, and clipping costs time in every frame
+    if (picture == null || radius == 0) return box;
+    return ClipRRect(borderRadius: BorderRadius.circular(radius ?? ShareMeSize.radiusFrame), child: box);
+  }
+}
+
+/// The type tile until the picture is decoded, then the picture fades in over it (no blank flash). Once it covers the tile, the tile is
+/// no longer drawn.
+class _FadeOver extends StatefulWidget {
+  final Widget fallback;
+  final bool ready;
+  final Widget child;
+
+  const _FadeOver({required this.fallback, required this.ready, required this.child});
+
+  @override
+  State<_FadeOver> createState() => _FadeOverState();
+}
+
+class _FadeOverState extends State<_FadeOver> {
+  late bool _covered = widget.ready;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (!_covered) widget.fallback,
+        AnimatedOpacity(
+          // Keeps its place (and its state) when the tile below goes
+          key: const ValueKey('picture'),
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOut,
+          opacity: widget.ready ? 1 : 0,
+          onEnd: () {
+            if (mounted && widget.ready) setState(() => _covered = true);
+          },
+          child: widget.child,
+        ),
+      ],
     );
   }
 }
@@ -222,8 +305,9 @@ class _GalleryThumb extends StatefulWidget {
   final FilmFrame frame;
   final Widget fallback;
   final bool small;
+  final int pixels;
 
-  const _GalleryThumb({required this.frame, required this.fallback, this.small = false});
+  const _GalleryThumb({required this.frame, required this.fallback, required this.pixels, this.small = false, super.key});
 
   @override
   State<_GalleryThumb> createState() => _GalleryThumbState();
@@ -236,7 +320,7 @@ class _GalleryThumbState extends State<_GalleryThumb> {
   @override
   void initState() {
     super.initState();
-    final key = widget.frame.assetId ?? widget.frame.fileName;
+    final key = '${widget.frame.assetId ?? widget.frame.fileName}@${widget.pixels}';
     if (_cache.containsKey(key)) {
       _data = _cache[key];
     } else {
@@ -252,7 +336,7 @@ class _GalleryThumbState extends State<_GalleryThumb> {
       final permission = await PhotoManager.getPermissionState(requestOption: const PermissionRequestOption());
       if (permission.hasAccess && assetId != null) {
         final asset = await AssetEntity.fromId(assetId);
-        data = await asset?.thumbnailDataWithSize(const ThumbnailSize.square(240));
+        data = await asset?.thumbnailDataWithSize(ThumbnailSize.square(widget.pixels));
       } else if (permission.hasAccess) {
         // The file name comes from the other device: quote it ourselves and double single quotes (standard SQL) to avoid an unintended query
         final quoted = "'${name.replaceAll("'", "''")}'";
@@ -261,7 +345,7 @@ class _GalleryThumbState extends State<_GalleryThumb> {
             .addOrderBy(column: CustomColumns.base.createDate, isAsc: false); // most recently added first
         final assets = await PhotoManager.getAssetListRange(start: 0, end: 1, filterOption: filter);
         if (assets.isNotEmpty) {
-          data = await assets.first.thumbnailDataWithSize(const ThumbnailSize.square(240));
+          data = await assets.first.thumbnailDataWithSize(ThumbnailSize.square(widget.pixels));
         }
       }
     } catch (_) {

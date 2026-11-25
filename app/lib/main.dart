@@ -9,8 +9,8 @@ import 'package:localsend_app/config/init_error.dart';
 import 'package:localsend_app/config/shareme_licenses.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
-import 'package:localsend_app/model/persistence/color_mode.dart';
 import 'package:localsend_app/pages/home_page.dart';
+import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/local_ip_provider.dart';
 import 'package:localsend_app/provider/network/scan_facade.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
@@ -78,10 +78,17 @@ class LocalSendApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ref = context.ref;
-    final (themeMode, colorMode, customColor) = ref.watch(
-      settingsProvider.select((settings) => (settings.theme, settings.colorMode, settings.customColor)),
+    // One watch for all of them: Refena keeps only the last one per provider and widget
+    final (themeMode, colorMode, customColor, animations) = ref.watch(
+      settingsProvider.select((settings) => (settings.theme, settings.colorMode, settings.customColor, settings.enableAnimations)),
     );
     final dynamicColors = ref.watch(dynamicColorsProvider);
+    // Shuttle: the "Animations" switch (advanced settings). Everything of ours asks MediaQuery, as with the system's own setting
+    if (animations) {
+      setDefaultRouteTransition();
+    } else {
+      Routerino.transition = RouterinoTransition.noTransition;
+    }
     return TrayWatcher(
       child: WindowWatcher(
         child: LifeCycleWatcher(
@@ -120,8 +127,14 @@ class LocalSendApp extends StatelessWidget {
               debugShowCheckedModeBanner: false,
               theme: getTheme(colorMode, customColor, Brightness.light, dynamicColors),
               darkTheme: getTheme(colorMode, customColor, Brightness.dark, dynamicColors),
-              themeMode: colorMode == ColorMode.oled ? ThemeMode.dark : themeMode,
-              builder: (context, child) => WindowBrightnessWatcher(child: child!),
+              themeMode: themeMode,
+              builder: (context, child) {
+                final media = MediaQuery.of(context);
+                return MediaQuery(
+                  data: media.copyWith(disableAnimations: media.disableAnimations || !animations),
+                  child: WindowBrightnessWatcher(child: child!),
+                );
+              },
               navigatorKey: context.read(navigationProvider).key,
               home: RouterinoHome(
                 builder: () => const HomePage(

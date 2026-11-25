@@ -441,7 +441,8 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
       statuses: {for (final file in sendingFiles.values) file.file.id: file.token != null ? FileStatus.queue : FileStatus.skipped},
     );
 
-    if (state[sessionId]?.background == false) {
+    // Shuttle: not when the page for this session is already open (it covers this state too; replacing it would cut its animation off)
+    if (state[sessionId]?.background == false && !SmSendPage.isOpen(sessionId)) {
       final background = ref.read(settingsProvider).sendMode == SendMode.multiple;
 
       unawaited(

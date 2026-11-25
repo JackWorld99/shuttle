@@ -11,7 +11,6 @@ import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/pages/home_page.dart';
 import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/pages/tabs/transfer_tab.dart' show chooseTargetAndSend;
-import 'package:localsend_app/pages/whats_new_page.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/app_arguments_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
@@ -40,6 +39,7 @@ import 'package:localsend_app/util/shareme_diagnostics.dart';
 import 'package:localsend_app/util/ui/dynamic_colors.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/dialogs/local_network_dialog.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/dto/file_dto.dart';
@@ -87,6 +87,7 @@ Future<RefenaContainer> preInit(List<String> args) async {
     }
   }
 
+  final backdrop = loadBackdropShader(); // Shuttle: the backdrop's shader (ambient.dart)
   final dynamicColors = await getDynamicColors();
 
   final persistenceService = await PersistenceService.initialize(
@@ -154,6 +155,7 @@ Future<RefenaContainer> preInit(List<String> args) async {
     }
   }
 
+  await backdrop;
   setDefaultRouteTransition();
 
   final container = RefenaContainer(
@@ -337,13 +339,7 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
     );
   }
 
-  if (!ref.read(persistenceProvider).isFirstAppStart) {
-    WhatsNewPage? whatsNew = WhatsNewPage.fromLastVersion(lastVersion: ref.read(persistenceProvider).getWhatsNew());
-    if (whatsNew != null) {
-      // ignore: unawaited_futures
-      ref.global.dispatchAsync(NavigateAction.push(whatsNew));
-    }
-  }
+  // Shuttle: LocalSend's "What's new in 1.18.0" page is not shown; Shuttle's own changes are on the release page
 
   await ref.future(versionProvider).then((version) async {
     await ref.read(persistenceProvider).setWhatsNew(version.version);

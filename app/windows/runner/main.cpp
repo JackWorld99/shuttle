@@ -34,6 +34,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
+  // Shuttle: draw with Skia instead of Impeller, the default on Windows since
+  // Flutter 3.47. Impeller runs on OpenGL ES (ANGLE) there. Measured on an
+  // integrated Intel GPU: 2 to 3 ms per gradient, 20 to 50 ms per frame on our
+  // pages (Skia: 3 to 9 ms), and its gradients aren't dithered, so the backdrop
+  // shows rings. Before this opt-out is removed from Flutter, measure again
+  // (tools/test/live/bench.dart) and use fewer gradients if needed.
+  project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
+
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1100, 720);  // Shuttle: wide enough for the three-column layout on first launch

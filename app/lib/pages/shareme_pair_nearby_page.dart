@@ -13,6 +13,7 @@ import 'package:localsend_app/provider/security_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_protocol.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:localsend_app/widget/shareme/pair_widgets.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:logging/logging.dart';
@@ -313,8 +314,8 @@ class _SmPairNearbyPageState extends State<SmPairNearbyPage> with Refena {
   @override
   Widget build(BuildContext context) {
     final s = t.shareme.pair;
-    return Scaffold(
-      appBar: AppBar(title: Text(_stage == _Stage.done ? s.doneTitle : s.nearbyTitle(name: _peerName))),
+    return SmScaffold(
+      appBar: AppBar(title: _stage == _Stage.done ? null : Text(s.nearbyTitle(name: _peerName))),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
@@ -387,34 +388,21 @@ class _SmPairNearbyPageState extends State<SmPairNearbyPage> with Refena {
     final s = t.shareme.pair;
     final peer = _peer!;
     final settings = context.watch(settingsProvider);
-    final me = ref.read(deviceFullInfoProvider);
     final name = _name.text.trim().isEmpty ? peer.alias : _name.text.trim();
     return Column(
       children: [
-        const SizedBox(height: 24),
-        PairedDuo(
-          myFingerprint: ref.read(securityProvider).certificateHash,
-          myName: me.alias == '-' ? settings.alias : me.alias,
-          theirFingerprint: peer.fingerprint,
-          theirName: name,
-        ),
-        const SizedBox(height: 22),
-        Text(s.doneTitle, style: ShareMeText.display.copyWith(color: c.ink)),
-        const SizedBox(height: 10),
+        const SizedBox(height: 44),
+        PairedDuo(theirFingerprint: peer.fingerprint),
+        const SizedBox(height: 30),
+        Text(s.doneTitle, style: ShareMeText.display.copyWith(color: c.ink, fontSize: 30)),
+        const SizedBox(height: 8),
         Text(
           settings.quickSave || settings.quickSaveFromFavorites ? s.doneAuto(name: name) : s.doneAsk(name: name),
           style: ShareMeText.body.copyWith(color: c.ink2),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 18),
-        TextField(
-          controller: _name,
-          maxLength: 32,
-          onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(labelText: s.nameIt, counterText: ''),
-        ),
-        const SizedBox(height: 20),
-        FilledButton(onPressed: _finish, child: Text(s.done)),
+        const SizedBox(height: 36),
+        PairNameForm(controller: _name, onChanged: () => setState(() {}), onDone: _finish),
       ],
     );
   }

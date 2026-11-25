@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -7,24 +8,31 @@ import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/model/state/send/send_session_state.dart';
 import 'package:localsend_app/model/state/send/sending_file.dart';
+import 'package:localsend_app/pages/shareme_receive_page.dart' show RequestWarning;
 import 'package:localsend_app/pages/tabs/send_tab_vm.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/file_transfer_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
-import 'package:localsend_app/provider/security_provider.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/shareme_format.dart';
+import 'package:localsend_app/util/shareme_own_page.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart' show isTailscaleIp;
-import 'package:localsend_app/widget/dialogs/cancel_session_dialog.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
+import 'package:localsend_app/widget/shareme/bottom_actions.dart';
+import 'package:localsend_app/widget/shareme/content_stack.dart';
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
-import 'package:localsend_app/widget/shareme/stamp.dart';
+import 'package:localsend_app/widget/shareme/film_strip.dart';
+import 'package:localsend_app/widget/shareme/sm_card.dart';
+import 'package:localsend_app/widget/shareme/sm_sheets.dart';
+import 'package:localsend_app/widget/shareme/transfer_scene.dart';
+import 'package:localsend_app/widget/shareme/transfer_stage.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/file_status.dart';
+import 'package:localsend_isolates/model/file_type.dart';
 import 'package:localsend_isolates/model/session_status.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:refena_flutter/addons.dart';
 import 'package:refena_flutter/refena_flutter.dart';
-import 'package:routerino/routerino.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Shuttle: the send page. One page covers every state of a send:
@@ -41,6 +49,12 @@ class SmSendPage extends StatefulWidget {
 
   const SmSendPage({required this.sessionId, this.closeSessionOnClose = true, super.key});
 
+  /// Sessions with a page on the navigation stack. LocalSend opens a second page once the receiver accepts; this page already covers
+  /// that state, and replacing it would cut its animation off.
+  static final _open = <String, int>{};
+
+  static bool isOpen(String sessionId) => (_open[sessionId] ?? 0) > 0;
+
   @override
   State<SmSendPage> createState() => _SmSendPageState();
 }
@@ -48,7 +62,7 @@ class SmSendPage extends StatefulWidget {
 class _SmSendPageState extends State<SmSendPage> with Refena {
   Timer? _tick; // refreshes speed and remaining time every 0.5 s
 
-  /// Goes back to the home page 2 s after everything is delivered (one-tap send: no need to tap "Done")
+  /// Goes back to the home page shortly after everything is delivered (one-tap send: no need to tap "Done")
   Timer? _autoBack;
 
   /// Retries automatically when a send to one of my devices sent nothing at all (usually a temporary connection failure).
@@ -92,6 +106,10 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
   final _samples = <(int, int)>[];
   double _speed = 0;
 
+  /// The page as last built while its session existed. Closing the page ends the session first, so this is what stays on screen
+  /// during the exit animation (instead of an empty page).
+  Widget? _last;
+
   void _sample() {
     final session = ref.read(sendProvider)[widget.sessionId];
     if (session == null || session.status != SessionStatus.sending) {
@@ -112,6 +130,7 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
   @override
   void initState() {
     super.initState();
+    SmSendPage._open[widget.sessionId] = (SmSendPage._open[widget.sessionId] ?? 0) + 1;
     _tick = Timer.periodic(const Duration(milliseconds: 500), (_) {
       if (!mounted) return;
       _sample();
@@ -126,6 +145,12 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
 
   @override
   void dispose() {
+    final open = (SmSendPage._open[widget.sessionId] ?? 1) - 1;
+    if (open > 0) {
+      SmSendPage._open[widget.sessionId] = open;
+    } else {
+      SmSendPage._open.remove(widget.sessionId);
+    }
     _tick?.cancel();
     _autoBack?.cancel();
     _autoRetry?.cancel();
@@ -137,7 +162,10 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
     super.dispose();
   }
 
-  void _toRoot() => context.global.dispatch(NavigateAction.popUntilRoot());
+  /// "Stop sending?" is open
+  bool _asking = false;
+
+  void _close() => closeOwnPage(context, () => context.global.dispatch(NavigateAction.popUntilRoot()), ownSheet: _asking);
 
   /// Cleanup when the page is closed by the back gesture / back button.
   void _onLeave(SendSessionState? session) {
@@ -158,15 +186,17 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
   }
 
   Future<void> _confirmCancel() async {
-    final ok = (await context.pushBottomSheet(() => const CancelSessionDialog())) == true;
+    _asking = true;
+    final ok = await confirmStopTransfer(context, sending: true);
+    _asking = false;
     if (!ok || !mounted) return;
     ref.notifier(sendProvider).cancelSession(widget.sessionId);
-    _toRoot();
+    _close();
   }
 
   void _finish() {
     ref.notifier(sendProvider).closeSession(widget.sessionId);
-    _toRoot();
+    _close();
   }
 
   /// "Retry" when nothing was sent: sends the same files to the same device again (at its currently discovered address).
@@ -188,7 +218,7 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
     final target = ref.read(sendTabVmProvider).nearbyDevices.firstWhereOrNull((d) => d.fingerprint == session.target.fingerprint) ?? session.target;
     final notifier = ref.notifier(sendProvider);
     notifier.closeSession(widget.sessionId);
-    _toRoot();
+    _close();
     await notifier.startSession(target: target, files: files, background: false);
   }
 
@@ -208,79 +238,80 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
 
     if (session == null) {
       // The session is gone (e.g. removed automatically after a successful background send).
-      // Only go back home while this page is still on the navigation stack. Once it is closed and playing its exit
+      // Only while this page is still on the navigation stack (see closeOwnPage). Once it is closed and playing its exit
       // animation (e.g. after "Retry": this page closes, then a new send page opens), the 0.5 s refresh still rebuilds it;
       // going home then would also close the new send page, and the new send would count as "you canceled".
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && (ModalRoute.of(context)?.isActive ?? false)) _toRoot();
+        if (mounted) _close();
       });
-      return const Scaffold(body: SizedBox.shrink());
+      return IgnorePointer(child: _last ?? const SmScaffold(body: SizedBox.shrink()));
     }
 
-    final myFingerprint = context.watch(securityProvider).certificateHash;
     final isMine = context.watch(favoritesProvider).any((f) => f.fingerprint == session.target.fingerprint);
     if (session.status == SessionStatus.finished && _autoBack == null) {
       _autoRetries.remove(session.target.fingerprint); // delivered: reset the auto-retry count
-      _autoBack = Timer(const Duration(seconds: 2), () {
+      _autoBack = Timer(_autoBackAfter, () {
         if (mounted) _finish();
       });
     }
     final nothingSent = session.status == SessionStatus.finishedWithErrors && _nothingSent(session, transfers);
     final autoAttempt = nothingSent && isMine && session.errorMessage != t.shareme.send.insecure ? _scheduleAutoRetry(session) : null;
+    final sending = session.status == SessionStatus.sending;
+    final waiting = session.status == SessionStatus.waiting;
 
-    final Widget body = switch (session.status) {
-      // To "My devices": the peer accepts automatically, so skip "waiting for acceptance" and show progress (0% before it starts)
-      SessionStatus.waiting when isMine => _Sending(session: session, transfers: transfers, liveSpeed: _speed, onCancel: _confirmCancel),
-      SessionStatus.waiting => _Waiting(session: session, isMine: isMine, onCancel: () => Navigator.of(context).maybePop()),
-      SessionStatus.sending => _Sending(session: session, transfers: transfers, liveSpeed: _speed, onCancel: _confirmCancel),
-      // Nothing was sent (e.g. the peer was unreachable): the session errored, but no file finished or was marked failed,
-      // so the "Delivered" page below would wrongly report success (seen over Tailscale: the PC dialed the phone's stale
-      // Wi-Fi address, sent nothing, yet showed "Delivered").
-      SessionStatus.finishedWithErrors when nothingSent => _Stopped(
-        session: session,
-        onBack: _finish,
-        onRetry: () async => _retryAll(session),
-        autoAttempt: autoAttempt,
-      ),
-      SessionStatus.finished || SessionStatus.finishedWithErrors => _Delivered(
-        session: session,
-        transfers: transfers,
-        myFingerprint: myFingerprint,
-        isMine: isMine,
-        onDone: _finish,
-        onRetry: () async => _retryFailed(session, transfers),
-        autoBack: session.status == SessionStatus.finished,
-      ),
-      _ => _Stopped(session: session, onBack: _finish),
-    };
-
-    return PopScope(
+    final page = PopScope(
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) _onLeave(ref.read(sendProvider)[widget.sessionId]);
       },
-      child: Scaffold(
+      child: SmScaffold(
         body: SafeArea(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-                  child: IconButton(
-                    icon: const Icon(LucideIcons.chevronDown),
-                    onPressed: () => Navigator.of(context).maybePop(),
+              TransferTopBar(
+                title: session.target.alias,
+                // While waiting, leaving cancels, so there is only "Cancel" then
+                leading: sending
+                    ? IconButton(
+                        icon: const Icon(LucideIcons.chevronDown),
+                        tooltip: t.shareme.send.leaveHint,
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      )
+                    : null,
+                trailing: sending || waiting
+                    ? TextButton(
+                        onPressed: sending ? _confirmCancel : () => Navigator.of(context).maybePop(),
+                        child: Text(t.shareme.send.cancel, style: ShareMeText.label.copyWith(color: context.sm.ink2)),
+                      )
+                    : null,
+              ),
+              Expanded(
+                child: SmMaxWidth(
+                  maxWidth: 480,
+                  child: _Stage(
+                    session: session,
+                    isMine: isMine,
+                    transfers: transfers,
+                    liveSpeed: _speed,
+                    nothingSent: nothingSent,
+                    autoAttempt: autoAttempt,
+                    onDone: _finish,
+                    onRetryAll: () async => _retryAll(session),
+                    onRetryFailed: () async => _retryFailed(session, transfers),
                   ),
                 ),
               ),
-              Expanded(child: body),
             ],
           ),
         ),
       ),
     );
+    _last = page;
+    return IgnorePointer(ignoring: false, child: page);
   }
 }
+
+/// How long "Delivered" stays before the page closes by itself
+const _autoBackAfter = Duration(milliseconds: 3000);
 
 /// Byte totals and progress of the files the peer accepted in one session.
 class _Totals {
@@ -307,436 +338,6 @@ class _Totals {
       doneCount = connecting ? 0 : files.where((f) => t.getStatus(sessionId: sessionId, fileId: f.file.id) == FileStatus.finished).length;
 }
 
-// ───────────────────────── Waiting for acceptance ─────────────────────────
-
-class _Waiting extends StatelessWidget {
-  final SendSessionState session;
-  final bool isMine;
-  final VoidCallback onCancel;
-
-  const _Waiting({required this.session, required this.isMine, required this.onCancel});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.sm;
-    final name = session.target.alias;
-    final bytes = session.files.values.fold<int>(0, (a, f) => a + f.file.size);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-      child: Column(
-        children: [
-          const Spacer(),
-          DeviceAvatar(deviceType: session.target.deviceType, size: 88, mine: isMine, badgeRing: c.bg),
-          const SizedBox(height: 24),
-          Text(
-            t.shareme.send.waitingTitle(name: name),
-            style: ShareMeText.display.copyWith(color: c.ink),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            t.shareme.send.waitingBody(name: name),
-            style: ShareMeText.body.copyWith(color: c.ink2),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 18),
-          Text(
-            t.shareme.send.sheetSummary(n: session.files.length, size: formatSize(bytes)),
-            style: ShareMeText.data.copyWith(color: c.ink2),
-          ),
-          const SizedBox(height: 18),
-          // While checksums are still being computed the request hasn't been sent yet; show "Preparing x/y"
-          if (session.hashedFileCount < session.files.length)
-            Text(
-              t.shareme.send.preparing(curr: session.hashedFileCount, n: session.files.length),
-              style: ShareMeText.data.copyWith(color: c.ink2),
-            )
-          else
-            SizedBox(
-              width: 40,
-              child: LinearProgressIndicator(minHeight: 4, color: c.ink, backgroundColor: c.tonal, borderRadius: BorderRadius.circular(99)),
-            ),
-          const Spacer(flex: 2),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(onPressed: onCancel, child: Text(t.shareme.send.cancel)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ───────────────────────── Transferring ─────────────────────────
-
-class _Sending extends StatelessWidget {
-  final SendSessionState session;
-  final FileTransferNotifier transfers;
-
-  /// Live speed over the last 3 s; falls back to the overall average until there are enough samples
-  final double liveSpeed;
-  final VoidCallback onCancel;
-
-  const _Sending({required this.session, required this.transfers, required this.liveSpeed, required this.onCancel});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.sm;
-    final totals = _Totals(session, transfers);
-    final ratio = totals.total == 0 ? 0.0 : (totals.current / totals.total).clamp(0.0, 1.0);
-    final start = session.startTime;
-    final elapsedMs = start == null ? 0 : DateTime.now().millisecondsSinceEpoch - start;
-    final average = elapsedMs > 500 ? totals.current / (elapsedMs / 1000) : 0.0;
-    final speed = liveSpeed > 0 ? liveSpeed : average;
-    final remaining = speed > 0 ? Duration(seconds: ((totals.total - totals.current) / speed).round()) : null;
-    final index = (totals.doneCount + 1).clamp(1, totals.count == 0 ? 1 : totals.count);
-    final target = session.target;
-    final files = session.files.values.where(
-      (f) => transfers.getStatus(sessionId: session.sessionId, fileId: f.file.id) != FileStatus.skipped,
-    );
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
-      children: [
-        Text(t.shareme.send.sendingTo, style: ShareMeText.meta.copyWith(color: c.ink2)),
-        const SizedBox(height: 2),
-        Text(
-          target.alias,
-          style: ShareMeText.headline.copyWith(color: c.ink),
-          overflow: TextOverflow.ellipsis,
-        ),
-        const SizedBox(height: 20),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text('${(ratio * 100).floor()}', style: ShareMeText.dataLg.copyWith(color: c.ink)),
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 8),
-              child: Text('%', style: ShareMeText.data.copyWith(color: c.ink2, fontSize: 16)),
-            ),
-            const Spacer(),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                session.status == SessionStatus.waiting
-                    // Checksums are computed before the request goes out (a few seconds for 200 photos); not connecting yet
-                    ? (session.hashedFileCount < session.files.length
-                          ? t.shareme.send.preparing(curr: session.hashedFileCount, n: session.files.length)
-                          : t.shareme.send.connecting)
-                    : [
-                        if (speed > 0) formatSpeed(speed),
-                        if (remaining != null) t.shareme.home.remaining(time: formatDuration(remaining)),
-                      ].join('   '),
-                style: ShareMeText.data.copyWith(color: c.ink2),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        TweenAnimationBuilder<double>(
-          tween: Tween(end: ratio),
-          duration: ShareMeMotion.short,
-          builder: (_, v, _) => LinearProgressIndicator(
-            value: v,
-            minHeight: 6,
-            color: c.ink,
-            backgroundColor: c.tonal,
-            borderRadius: BorderRadius.circular(ShareMeSize.radiusPill),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Text('${formatSize(totals.current)} / ${formatSize(totals.total)}', style: ShareMeText.data.copyWith(color: c.ink2)),
-            const Spacer(),
-            Text(
-              t.shareme.send.fileIndex(i: index, n: totals.count),
-              style: ShareMeText.data.copyWith(color: c.ink2),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            Text(t.shareme.send.files, style: ShareMeText.section.copyWith(color: c.ink2)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                [
-                  if (target.signalingId == null) t.shareme.home.sameWifi else t.shareme.home.crossNetwork,
-                  if (target.https) t.shareme.send.encrypted else t.shareme.send.notEncrypted,
-                ].join(' · '),
-                style: ShareMeText.meta.copyWith(color: target.https ? c.ink3 : c.warn, fontSize: 12.5),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Material(
-          color: c.group,
-          borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              for (final (i, f) in files.indexed) ...[
-                if (i > 0) Divider(height: 1, indent: 16, color: c.line),
-                _FileLine(file: f, sessionId: session.sessionId, transfers: transfers),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-        Text(
-          t.shareme.send.leaveHint,
-          style: ShareMeText.meta.copyWith(color: c.ink2),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 6),
-        Center(
-          child: TextButton(
-            onPressed: onCancel,
-            style: TextButton.styleFrom(foregroundColor: c.warn),
-            child: Text(t.shareme.send.cancelSend),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FileLine extends StatelessWidget {
-  final SendingFile file;
-  final String sessionId;
-  final FileTransferNotifier transfers;
-
-  const _FileLine({required this.file, required this.sessionId, required this.transfers});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.sm;
-    final status = transfers.getStatus(sessionId: sessionId, fileId: file.file.id);
-    final progress = transfers.getProgress(sessionId: sessionId, fileId: file.file.id);
-    final (String right, Color color) = switch (status) {
-      FileStatus.finished => (formatSize(file.file.size), c.ink2),
-      FileStatus.sending => ('${(progress * 100).floor()}%', c.ink),
-      FileStatus.failed => (t.shareme.send.failed, c.warn),
-      _ => (t.shareme.send.queued, c.ink3),
-    };
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              file.file.fileName,
-              style: ShareMeText.body.copyWith(color: status == FileStatus.queue ? c.ink2 : c.ink, fontSize: 14),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(right, style: ShareMeText.data.copyWith(color: color)),
-        ],
-      ),
-    );
-  }
-}
-
-// ───────────────────────── Delivered / partly failed ─────────────────────────
-
-class _Delivered extends StatelessWidget {
-  final SendSessionState session;
-  final FileTransferNotifier transfers;
-  final String myFingerprint;
-  final bool isMine;
-  final VoidCallback onDone;
-  final VoidCallback onRetry;
-
-  /// All delivered: goes back home automatically after 2 s, with a note under the buttons
-  final bool autoBack;
-
-  const _Delivered({
-    required this.session,
-    required this.transfers,
-    required this.myFingerprint,
-    required this.isMine,
-    required this.onDone,
-    required this.onRetry,
-    required this.autoBack,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.sm;
-    final totals = _Totals(session, transfers);
-    final failed = session.files.values
-        .where((f) => transfers.getStatus(sessionId: session.sessionId, fileId: f.file.id) == FileStatus.failed)
-        .toList();
-    final ok = failed.isEmpty;
-    final start = session.startTime;
-    final end = session.endTime;
-    final elapsed = start != null && end != null ? Duration(milliseconds: end - start) : null;
-    final avgSpeed = elapsed != null && elapsed.inMilliseconds > 0 ? totals.total / (elapsed.inMilliseconds / 1000) : null;
-    final sent = session.files.values.where(
-      (f) => transfers.getStatus(sessionId: session.sessionId, fileId: f.file.id) == FileStatus.finished,
-    );
-    // Only say "the receiver can verify each file" if every sent file really carried a SHA-256
-    final allHashed = sent.isNotEmpty && sent.every((f) => f.file.hash != null);
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      children: [
-        const SizedBox(height: 16),
-        // This device's avatar → the peer's; on delivery the peer's avatar "drops" in (unknown devices get a gray avatar)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            DeviceAvatar(deviceType: checkPlatformIsDesktop() ? DeviceType.desktop : DeviceType.mobile, size: 60, mine: true),
-            Container(width: 48, height: 2, color: c.tonalStrong, margin: const EdgeInsets.symmetric(horizontal: 12)),
-            if (ok)
-              Stamp(
-                tilt: false,
-                child: DeviceAvatar(deviceType: session.target.deviceType, size: 60, mine: isMine),
-              )
-            else
-              DeviceAvatar(deviceType: session.target.deviceType, size: 60, mine: isMine),
-          ],
-        ),
-        const SizedBox(height: 28),
-        if (ok) ...[
-          Text(
-            t.shareme.send.deliveredTo,
-            style: ShareMeText.meta.copyWith(color: c.ink2),
-            textAlign: TextAlign.center,
-          ),
-          Text(
-            session.target.alias,
-            style: ShareMeText.display.copyWith(color: c.ink),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            t.shareme.send.deliveredBody(n: totals.count),
-            style: ShareMeText.body.copyWith(color: c.ink2),
-            textAlign: TextAlign.center,
-          ),
-        ] else ...[
-          Text(
-            t.shareme.send.failedTitle(n: failed.length),
-            style: ShareMeText.display.copyWith(color: c.warn),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-          Material(
-            color: c.group,
-            borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (final (i, f) in failed.indexed) ...[
-                  if (i > 0) Divider(height: 1, indent: 16, color: c.line),
-                  _FileLine(file: f, sessionId: session.sessionId, transfers: transfers),
-                ],
-              ],
-            ),
-          ),
-        ],
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            _Stat(value: formatSize(totals.total), label: t.shareme.send.statSize),
-            _Stat(value: elapsed == null ? '--:--' : formatDuration(elapsed), label: t.shareme.send.statTime),
-            _Stat(value: avgSpeed == null ? '--' : formatSpeed(avgSpeed), label: t.shareme.send.statSpeed),
-          ],
-        ),
-        const SizedBox(height: 20),
-        if (sent.isNotEmpty)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: c.group, borderRadius: BorderRadius.circular(ShareMeSize.radiusGroup)),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(t.shareme.send.originalTitle, style: ShareMeText.title.copyWith(color: c.ink)),
-                      const SizedBox(height: 4),
-                      Text(
-                        allHashed ? t.shareme.send.originalWithHash : t.shareme.send.originalNoHash,
-                        style: ShareMeText.meta.copyWith(color: c.ink2),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: c.tonal, borderRadius: BorderRadius.circular(ShareMeSize.radiusTag)),
-                  child: Text(
-                    t.shareme.send.originalBadge,
-                    style: ShareMeText.labelSm.copyWith(color: c.ok, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        const SizedBox(height: 28),
-        // Two buttons side by side: the primary one takes 2/3 of the width, on the right
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton(
-                onPressed: ok ? onDone : onRetry,
-                style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(ShareMeSize.buttonH)),
-                child: FittedBox(fit: BoxFit.scaleDown, child: Text(ok ? t.shareme.send.sendMore : t.shareme.send.retry, maxLines: 1)),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 2,
-              child: FilledButton(onPressed: onDone, child: Text(t.shareme.send.done)),
-            ),
-          ],
-        ),
-        if (ok && autoBack) ...[
-          const SizedBox(height: 12),
-          Text(
-            t.shareme.send.autoBack,
-            style: ShareMeText.meta.copyWith(color: c.ink2),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  final String value;
-  final String label;
-
-  const _Stat({required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.sm;
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: ShareMeText.data.copyWith(color: c.ink, fontSize: 16, fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(height: 2),
-          Text(label, style: ShareMeText.meta.copyWith(color: c.ink2, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-}
-
 /// The session errored and no file finished or was marked failed: it failed at the "prepare upload" step (peer
 /// unreachable, peer error, etc.).
 bool _nothingSent(SendSessionState session, FileTransferNotifier transfers) => session.files.values.every((f) {
@@ -744,26 +345,280 @@ bool _nothingSent(SendSessionState session, FileTransferNotifier transfers) => s
   return s != FileStatus.finished && s != FileStatus.failed;
 });
 
-// ───────────────────────── Declined / busy / canceled / not sent ─────────────────────────
+// ───────────────────────── The stage ─────────────────────────
 
-class _Stopped extends StatefulWidget {
+/// One continuous picture for every state: what is being sent on top, the two devices with the line between them, and one short
+/// block of text. When it arrives, the pictures fly into the receiving device and the rest settles in the middle.
+class _Stage extends StatelessWidget {
   final SendSessionState session;
-  final VoidCallback onBack;
+  final bool isMine;
+  final FileTransferNotifier transfers;
 
-  /// Retry is possible when nothing was sent
-  final VoidCallback? onRetry;
+  /// Live speed over the last 3 s; falls back to the overall average until there are enough samples
+  final double liveSpeed;
+  final bool nothingSent;
 
   /// For my devices an automatic retry follows shortly: its attempt number (null = no automatic retry)
   final int? autoAttempt;
+  final VoidCallback onDone;
+  final VoidCallback onRetryAll;
+  final VoidCallback onRetryFailed;
 
-  const _Stopped({required this.session, required this.onBack, this.onRetry, this.autoAttempt});
+  const _Stage({
+    required this.session,
+    required this.isMine,
+    required this.transfers,
+    required this.liveSpeed,
+    required this.nothingSent,
+    required this.autoAttempt,
+    required this.onDone,
+    required this.onRetryAll,
+    required this.onRetryFailed,
+  });
 
   @override
-  State<_Stopped> createState() => _StoppedState();
+  Widget build(BuildContext context) {
+    final totals = _Totals(session, transfers);
+    final ratio = totals.total == 0 ? 0.0 : (totals.current / totals.total).clamp(0.0, 1.0);
+    final failed = [
+      if (session.status == SessionStatus.finishedWithErrors && !nothingSent)
+        for (final f in session.files.values)
+          if (transfers.getStatus(sessionId: session.sessionId, fileId: f.file.id) == FileStatus.failed) f,
+    ];
+    final delivered =
+        session.status == SessionStatus.finished || (session.status == SessionStatus.finishedWithErrors && !nothingSent && failed.isEmpty);
+    final phase = switch (session.status) {
+      SessionStatus.waiting => ScenePhase.waiting,
+      SessionStatus.sending => ScenePhase.moving,
+      _ => delivered ? ScenePhase.done : ScenePhase.broken,
+    };
+
+    return TransferStage(
+      phase: phase,
+      progress: ratio,
+      from: (size) => DeviceAvatar(deviceType: checkPlatformIsDesktop() ? DeviceType.desktop : DeviceType.mobile, size: size, mine: true),
+      to: (size) => DeviceAvatar(deviceType: session.target.deviceType, size: size, mine: isMine),
+      frames: _frames(session),
+      sceneAtTop: failed.isNotEmpty,
+      // Same key as the moving text, so the number simply runs up to 100
+      arrivingText: Column(
+        key: const ValueKey('moving'),
+        children: [
+          const BigPercent(1, glide: Duration(milliseconds: 300)),
+          const SizedBox(height: 4),
+          Text('', style: ShareMeText.body.copyWith(fontSize: 14)),
+        ],
+      ),
+      text: switch (phase) {
+        ScenePhase.waiting => _waitingText(context),
+        ScenePhase.moving => _movingText(context, totals, ratio),
+        ScenePhase.done => _doneText(context),
+        ScenePhase.broken => failed.isNotEmpty ? _failedText(context, failed) : _StoppedText(key: const ValueKey('stopped'), session: session),
+      },
+      bottom: _bottom(context, phase, failed.isNotEmpty),
+    );
+  }
+
+  static List<FilmFrame> _frames(SendSessionState s) => [
+    for (final f in s.files.values)
+      _isMessage(f)
+          ? FilmFrame(fileName: utf8.decode(f.bytes!, allowMalformed: true), fileType: FileType.text, path: null, isMessage: true)
+          : FilmFrame(fileName: f.file.fileName, fileType: f.file.fileType, path: f.path, assetId: f.asset?.id, bytes: f.thumbnail),
+  ];
+
+  /// Text and links are sent as an in-memory text file
+  static bool _isMessage(SendingFile f) => f.file.fileType == FileType.text && f.path == null && f.bytes != null;
+
+  Widget _summary() => ContentSummary(
+    files: [for (final f in session.files.values) (f.file.fileName, f.file.fileType)],
+    bytes: session.files.values.fold<int>(0, (a, f) => a + f.file.size),
+    message: session.files.values.every(_isMessage),
+    alignment: WrapAlignment.center,
+  );
+
+  Widget _waitingText(BuildContext context) {
+    // Checksums are computed before the request goes out (a few seconds for 200 photos); not connecting yet
+    final preparing = session.hashedFileCount < session.files.length;
+    return StageText(
+      key: ValueKey('waiting-$preparing'),
+      title: preparing
+          ? t.shareme.send.preparing(curr: session.hashedFileCount, n: session.files.length)
+          : isMine
+          ? t.shareme.send.connecting
+          : t.shareme.send.waitingTitle(name: session.target.alias),
+      children: [_summary(), ..._notEncrypted()],
+    );
+  }
+
+  /// Sending to a device without encryption (its encryption is off): said for as long as it lasts
+  List<Widget> _notEncrypted() => session.target.https
+      ? const []
+      : [
+          const SizedBox(height: 14),
+          RequestWarning(text: t.shareme.send.notEncrypted),
+        ];
+
+  Widget _movingText(BuildContext context, _Totals totals, double ratio) {
+    final c = context.sm;
+    final start = session.startTime;
+    final elapsedMs = start == null ? 0 : DateTime.now().millisecondsSinceEpoch - start;
+    final average = elapsedMs > 500 ? totals.current / (elapsedMs / 1000) : 0.0;
+    final speed = liveSpeed > 0 ? liveSpeed : average;
+    final remaining = speed > 0 ? Duration(seconds: ((totals.total - totals.current) / speed).round()) : null;
+    return Column(
+      key: const ValueKey('moving'),
+      children: [
+        BigPercent(ratio),
+        const SizedBox(height: 4),
+        Text(
+          formatPace(left: remaining, speed: speed),
+          style: ShareMeText.body.copyWith(color: c.ink2, fontSize: 14),
+        ),
+        ..._notEncrypted(),
+      ],
+    );
+  }
+
+  Widget _doneText(BuildContext context) => StageText(
+    key: const ValueKey('done'),
+    title: t.shareme.send.delivered,
+    titleSize: 30,
+    children: [
+      Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          _summary(),
+          // No check mark: only the receiver can verify the checksums
+          if (!session.files.values.every(_isMessage)) const OriginalChip(verified: false),
+        ],
+      ),
+    ],
+  );
+
+  Widget _failedText(BuildContext context, List<SendingFile> failed) {
+    final c = context.sm;
+    return Column(
+      key: const ValueKey('failed'),
+      children: [
+        Text(
+          t.shareme.send.failedTitle(n: failed.length),
+          style: ShareMeText.display.copyWith(color: c.warn, fontSize: 24),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 18),
+        SmCard(
+          child: Column(
+            children: [
+              for (final (i, f) in failed.indexed) ...[
+                if (i > 0) Divider(height: 1, indent: 70, color: c.line),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Row(
+                    children: [
+                      FileThumb(
+                        frame: FilmFrame(fileName: f.file.fileName, fileType: f.file.fileType, path: f.path, assetId: f.asset?.id),
+                        size: 42,
+                        radius: 12,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          f.file.fileName,
+                          style: ShareMeText.body.copyWith(color: c.ink, fontSize: 14.5),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget? _bottom(BuildContext context, ScenePhase phase, bool someFailed) {
+    final c = context.sm;
+    if (phase == ScenePhase.done) {
+      return Padding(
+        key: const ValueKey('done'),
+        padding: BottomActions.padding,
+        child: CountdownButton(
+          label: t.shareme.send.done,
+          // The button fills up while the page waits to close by itself
+          countdown: session.status == SessionStatus.finished ? _autoBackAfter - TransferStage.flight : null,
+          onPressed: onDone,
+        ),
+      );
+    }
+    if (phase != ScenePhase.broken) return null;
+    if (someFailed) {
+      return BottomActions(
+        key: const ValueKey('failed'),
+        secondaryLabel: t.shareme.send.done,
+        onSecondary: onDone,
+        primaryLabel: t.shareme.send.retry,
+        onPrimary: onRetryFailed,
+      );
+    }
+    final insecure = session.errorMessage == t.shareme.send.insecure;
+    if (nothingSent && !insecure) {
+      return Column(
+        key: const ValueKey('retry'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (autoAttempt != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2, color: c.ink2)),
+                  const SizedBox(width: 8),
+                  Text(
+                    t.shareme.send.autoRetrying(n: autoAttempt!),
+                    style: ShareMeText.meta.copyWith(color: c.ink2),
+                  ),
+                ],
+              ),
+            ),
+          BottomActions(
+            secondaryLabel: t.shareme.send.back,
+            onSecondary: onDone,
+            primaryLabel: t.shareme.send.retryAll,
+            onPrimary: onRetryAll,
+          ),
+        ],
+      );
+    }
+    return Padding(
+      key: const ValueKey('back'),
+      padding: BottomActions.padding,
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton(onPressed: onDone, child: Text(t.shareme.send.back)),
+      ),
+    );
+  }
 }
 
-/// The reason is a single sentence; the raw error is tucked under "Details" and only shown when expanded.
-class _StoppedState extends State<_Stopped> {
+/// Declined, busy, canceled or not sent. The reason is a single sentence; the raw error is tucked under "Details".
+class _StoppedText extends StatefulWidget {
+  final SendSessionState session;
+
+  const _StoppedText({required this.session, super.key});
+
+  @override
+  State<_StoppedText> createState() => _StoppedTextState();
+}
+
+class _StoppedTextState extends State<_StoppedText> {
   bool _details = false;
 
   @override
@@ -785,90 +640,34 @@ class _StoppedState extends State<_Stopped> {
     final reason = insecure
         ? session.errorMessage
         : notSent
-        ? (isTailscaleIp(session.target.ip) ? t.shareme.send.notSentReasonRemote(name: name) : t.shareme.send.notSentReason(name: name))
+        ? (isTailscaleIp(session.target.ip) ? t.shareme.send.notSentReasonRemote : t.shareme.send.notSentReason)
         : null;
     final details = notSent ? session.errorMessage : null;
-    final retry = notSent ? widget.onRetry : null;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-      child: Column(
-        children: [
-          const Spacer(),
-          Container(
-            width: 84,
-            height: 84,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: c.warnContainer, shape: BoxShape.circle),
-            child: Icon(notSent ? LucideIcons.wifiOff : LucideIcons.circleAlert, size: 36, color: c.warn),
-          ),
-          const SizedBox(height: 20),
+    return StageText(
+      title: message,
+      children: [
+        if (reason != null)
           Text(
-            message,
-            style: ShareMeText.title.copyWith(color: c.ink, fontSize: 20, fontWeight: FontWeight.w700),
+            reason,
+            style: ShareMeText.body.copyWith(color: c.ink2),
             textAlign: TextAlign.center,
           ),
-          if (reason != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              reason,
-              style: ShareMeText.body.copyWith(color: c.ink2),
-              textAlign: TextAlign.center,
-            ),
-          ],
-          if (details != null) ...[
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: () => setState(() => _details = !_details),
-              icon: Icon(_details ? LucideIcons.chevronUp : LucideIcons.chevronDown, size: 16, color: c.ink2),
-              label: Text(t.shareme.send.details, style: ShareMeText.meta.copyWith(color: c.ink2)),
-            ),
-            if (_details)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: c.tonal, borderRadius: BorderRadius.circular(12)),
-                child: SelectableText(details, style: ShareMeText.meta.copyWith(color: c.ink2, fontSize: 12)),
-              ),
-          ],
-          const Spacer(flex: 2),
-          if (retry != null && widget.autoAttempt != null) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2, color: c.ink2)),
-                const SizedBox(width: 8),
-                Text(
-                  t.shareme.send.autoRetrying(n: widget.autoAttempt!),
-                  style: ShareMeText.meta.copyWith(color: c.ink2),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-          ],
-          if (retry != null)
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: widget.onBack,
-                    style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(ShareMeSize.buttonH)),
-                    child: Text(t.shareme.send.back),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton(onPressed: retry, child: Text(t.shareme.send.retryAll)),
-                ),
-              ],
-            )
-          else
-            SizedBox(
+        if (details != null) ...[
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () => setState(() => _details = !_details),
+            icon: Icon(_details ? LucideIcons.chevronUp : LucideIcons.chevronDown, size: 16, color: c.ink3),
+            label: Text(t.shareme.send.details, style: ShareMeText.meta.copyWith(color: c.ink2)),
+          ),
+          if (_details)
+            Container(
               width: double.infinity,
-              child: FilledButton(onPressed: widget.onBack, child: Text(t.shareme.send.back)),
+              padding: const EdgeInsets.all(12),
+              decoration: smInsetDecoration(c, radius: 12),
+              child: SelectableText(details, style: ShareMeText.meta.copyWith(color: c.ink2, fontSize: 12)),
             ),
         ],
-      ),
+      ],
     );
   }
 }

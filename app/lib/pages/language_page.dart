@@ -3,6 +3,7 @@ import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/i18n.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
+import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 
 class LanguagePage extends StatelessWidget {
@@ -12,7 +13,7 @@ class LanguagePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Translations.of(context);
     final activeLocale = context.ref.watch(settingsProvider.select((s) => s.locale));
-    return Scaffold(
+    return SmScaffold(
       appBar: AppBar(
         title: Text(t.settingsTab.general.language),
       ),

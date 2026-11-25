@@ -28,11 +28,13 @@ import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
+import 'package:localsend_app/util/native/win_window.dart';
 import 'package:localsend_app/util/shareme_file_safety.dart';
 import 'package:localsend_app/util/shareme_sender_identity.dart';
 import 'package:localsend_app/widget/shareme/message_sheet.dart';
 import 'package:localsend_app/widget/shareme/quick_saved_notice.dart';
 import 'package:localsend_app/widget/shareme/receive_popup.dart';
+import 'package:localsend_app/widget/shareme/sm_sheets.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/file_status.dart';
@@ -162,15 +164,16 @@ class ReceiveController {
     if (quickSave) {
       // Shuttle desktop: while the main window is in the tray / minimized, progress and completion show in the small bottom-right popup
       if (await SmPopupWindow.shouldUse()) {
-        // ignore: use_build_context_synchronously, unawaited_futures
-        Routerino.context.pushImmediately(() => const SmReceivePopupPage());
-        await SmPopupWindow.enter(236);
+        await SmPopupWindow.open(null);
       } else {
         // Push before accepting: the permission request in [acceptFileRequest] may block for a while.
-        // ignore: use_build_context_synchronously, unawaited_futures
-        Routerino.context.pushImmediately(
-          // Shuttle: receive progress uses Shuttle's own page (SmReceiveProgressPage)
-          () => SmReceiveProgressPage(sessionId: sessionId),
+        openQuietly(
+          // ignore: use_build_context_synchronously, discarded_futures
+          () => Routerino.context.push(
+            // Shuttle: receive progress uses Shuttle's own page (SmReceiveProgressPage)
+            () => SmReceiveProgressPage(sessionId: sessionId),
+            transition: RouterinoTransition.fade(),
+          ),
         );
       }
 
@@ -183,6 +186,7 @@ class ReceiveController {
 
     // Shuttle desktop: while the main window is in the tray / minimized, file requests use the small bottom-right popup instead
     // of bringing up the whole main window and stealing focus. Text and links work as before (main window + bottom sheet).
+    if (server.getState().session?.message != null) await SmPopupWindow.makeWay(); // a text needs the normal window
     final usePopup = server.getState().session?.message == null && await SmPopupWindow.shouldUse();
     if (!usePopup &&
         checkPlatformHasTray() &&
@@ -219,7 +223,11 @@ class ReceiveController {
     final receiveProvider = ViewProvider((ref) {
       // No select: comparing the selected session runs the dart_mappable deep equality
       // over the whole files map on every state change.
-      final session = ref.watch(serverProvider)?.session;
+      final current = ref.watch(serverProvider)?.session;
+      // Shuttle: only this request. A page of an earlier request may still be on the navigation stack when the next one comes in;
+      // it must not show that one, and above all not answer it (closing the page declines).
+      final session = current?.sessionId == sessionId ? current : null;
+      bool own() => ref.read(serverProvider)?.session?.sessionId == sessionId;
       return ReceivePageVm(
         status: session?.status,
         sender: messageSender ?? session?.sender ?? Device.empty,
@@ -227,14 +235,10 @@ class ReceiveController {
         files: session?.files.values.map((f) => f.file).toList() ?? [],
         message: message,
         onAccept: () async {
+          if (!own()) return;
           if (message != null) {
             // accept nothing
             await ref.notifier(serverProvider).acceptFileRequest({});
-            return;
-          }
-
-          final sessionId = ref.read(serverProvider)?.session?.sessionId;
-          if (sessionId == null) {
             return;
           }
 
@@ -242,20 +246,21 @@ class ReceiveController {
 
           // Push before accepting: the permission request in [acceptFileRequest] may block for a while.
           unawaited(
-            Routerino.context.pushAndRemoveUntilImmediately(
+            Routerino.context.pushAndRemoveUntil(
               // Shuttle: file requests use SmReceivePage (text requests returned early above and never get here)
               removeUntil: SmReceivePage,
               builder: () => SmReceiveProgressPage(sessionId: sessionId),
+              transition: RouterinoTransition.fade(),
             ),
           );
 
           await ref.notifier(serverProvider).acceptFileRequest(selectedFiles);
         },
         onDecline: () {
-          ref.notifier(serverProvider).declineFileRequest();
+          if (own()) ref.notifier(serverProvider).declineFileRequest();
         },
         onClose: () {
-          ref.notifier(serverProvider).closeSession();
+          if (own()) ref.notifier(serverProvider).closeSession();
         },
       );
     });
@@ -264,8 +269,7 @@ class ReceiveController {
 
     // ignore: use_build_context_synchronously, unawaited_futures
     if (message == null && usePopup) {
-      Routerino.context.pushImmediately(() => SmReceivePopupPage(vm: receiveProvider)); // ignore: use_build_context_synchronously, unawaited_futures
-      await SmPopupWindow.enter(320);
+      await SmPopupWindow.open(receiveProvider);
     } else if (message == null) {
       Routerino.context.push(() => SmReceivePage(receiveProvider)); // ignore: use_build_context_synchronously, unawaited_futures
     } else if (isVerifiedMineDevice(server.ref, senderFingerprint)) {
@@ -282,11 +286,11 @@ class ReceiveController {
       // Shuttle: text and links are shown in a bottom sheet that is closed after reading.
       // Closing the sheet answers the sender with "seen" (accepting no files, like LocalSend's "Close" button);
       // if the sender already canceled, just close the session.
-      final sheet = showModalBottomSheet<void>(
+      final sheet = showSmSheet<void>(
         // ignore: use_build_context_synchronously
-        context: Routerino.context,
-        useSafeArea: true,
-        isScrollControlled: true,
+        Routerino.context,
+        maxWidth: 480,
+        scroll: false,
         builder: (_) => SmMessageSheet(receiveProvider),
       );
       unawaited(
@@ -524,7 +528,7 @@ class ReceiveController {
           if (SmPopupWindow.active) return;
 
           // ignore: use_build_context_synchronously, discarded_futures
-          Routerino.context.pushRootImmediately(() => const HomePage(initialTab: HomeTab.transfer, appStart: false));
+          openQuietly(() => Routerino.context.pushRootImmediately(() => const HomePage(initialTab: HomeTab.transfer, appStart: false)));
 
           // Shuttle: instead of LocalSend's "Open file?" dialog, show a snackbar with one button (see quick_saved_notice.dart)
           if (filePath != null && filePath.isNotEmpty) {
@@ -599,8 +603,9 @@ class ReceiveController {
       return;
     }
 
+    // Shuttle: from the bottom-right popup to the full page, like a click on the tray icon
     // ignore: discarded_futures
-    showFromTray().catchError((e) {
+    SmPopupWindow.expandFromTray().then((expanded) => expanded ? null : showFromTray()).catchError((e) {
       // don't wait for it
       _logger.severe('Failed to show from tray', e);
     });
@@ -808,10 +813,10 @@ void _cancelBySender(ServerUtils server) {
     // received cancel during accept/decline
     // pop just in case if user is in [ReceiveOptionsPage]
     // Shuttle: routerino's popUntil(Type) pops all the way down when the target page isn't found (there is no request page with
-    // quick save), so use a predicate with an isFirst fallback that matches both SmReceivePage and ReceivePage
-    Navigator.of(Routerino.context).popUntil(
-      (route) => route.settings.name == 'SmReceivePage' || route.settings.name == 'ReceivePage' || route.isFirst,
-    );
+    // quick save), so use a predicate with an isFirst fallback that matches every page that shows a request. (Without the popup in
+    // it, the home page was left in the small window in the corner.)
+    const requestPages = {'SmReceivePage', 'SmReceivePopupPage', 'ReceivePage'};
+    Navigator.of(Routerino.context).popUntil((route) => requestPages.contains(route.settings.name) || route.isFirst);
   }
 
   server.setState(

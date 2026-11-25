@@ -903,6 +903,10 @@ class Translations$shareme$time$zh_CN extends Translations$shareme$time$en {
   String hoursAgo({required Object n}) => '${n} 小时前';
   @override
   String daysAgo({required Object n}) => '${n} 天前';
+  @override
+  String seconds({required Object n}) => '${n} 秒';
+  @override
+  String minSec({required Object m, required Object s}) => '${m} 分 ${s} 秒';
 }
 
 // Path: shareme.home
@@ -957,7 +961,7 @@ class Translations$shareme$home$zh_CN extends Translations$shareme$home$en {
   @override
   String get emptyTitle => '还没有「我的设备」';
   @override
-  String get emptyBody => '扫码配对，或在「附近」点设备右边的「添加」或「配对」。';
+  String get emptyBody => '配对一次，以后直接传';
   @override
   String get sameWifi => '在线';
   @override
@@ -975,7 +979,7 @@ class Translations$shareme$home$zh_CN extends Translations$shareme$home$en {
   @override
   String get addDevice => '添加设备';
   @override
-  String get original => '原图';
+  String get original => '原档';
   @override
   String fromName({required Object name}) => '来自 ${name}';
   @override
@@ -1000,6 +1004,8 @@ class Translations$shareme$home$zh_CN extends Translations$shareme$home$en {
   String get sendTo => '发给';
   @override
   String dropTitleTo({required Object name}) => '拖到这里，发给 ${name}';
+  @override
+  String sendToName({required Object name}) => '发给 ${name}';
   @override
   String dropActiveTo({required Object name}) => '松手就发给 ${name}';
   @override
@@ -1048,11 +1054,17 @@ class Translations$shareme$send$zh_CN extends Translations$shareme$send$en {
   @override
   String get sheetTitle => '发给谁';
   @override
-  String get shareLink => '改用链接分享（对方用浏览器下载）';
+  String get stopTitle => '停止发送？';
+  @override
+  String get stop => '停止';
+  @override
+  String get keepGoing => '继续传';
+  @override
+  String get shareLink => '对方没装 Shuttle？用链接发';
   @override
   String get offlineCannot => '不在线 · 上线后才能发';
   @override
-  String get nearbyNeedsApproval => '附近 · 未配对，需要对方确认';
+  String get nearbyNeedsApproval => '要对方确认';
   @override
   String get noDevices => '附近还没找到设备。请确认两台设备连着同一个 WiFi。';
   @override
@@ -1060,7 +1072,7 @@ class Translations$shareme$send$zh_CN extends Translations$shareme$send$en {
   @override
   String get chooseDevice => '先选一台设备';
   @override
-  String waitingTitle({required Object name}) => '等待${name}接受';
+  String waitingTitle({required Object name}) => '等待 ${name} 接受';
   @override
   String waitingBody({required Object name}) => '请在${name}上点「接受」。对方开了「直接收」时会自动开始。';
   @override
@@ -1090,6 +1102,8 @@ class Translations$shareme$send$zh_CN extends Translations$shareme$send$en {
   @override
   String get deliveredTo => '已送达';
   @override
+  String get delivered => '已送达';
+  @override
   String get statSize => '大小';
   @override
   String get statTime => '用时';
@@ -1102,9 +1116,9 @@ class Translations$shareme$send$zh_CN extends Translations$shareme$send$en {
   @override
   String get originalNoHash => '发出的是原文件，没有压缩。';
   @override
-  String get originalBadge => '原图';
+  String get originalBadge => '原档';
   @override
-  String get retry => '重发没发出去的';
+  String get retry => '重发';
   @override
   String declined({required Object name}) => '${name} 拒绝了这次传输';
   @override
@@ -1122,9 +1136,9 @@ class Translations$shareme$send$zh_CN extends Translations$shareme$send$en {
   @override
   String notSentHint({required Object name}) => '连不上${name}。看看对方的 Shuttle 是否开着；不在同一个 WiFi 时，两边都要开着 Tailscale。';
   @override
-  String notSentReason({required Object name}) => '连不上 ${name}，它可能睡着了，或者没开 Shuttle。';
+  String get notSentReason => '它可能睡着了，或者没开 Shuttle。';
   @override
-  String notSentReasonRemote({required Object name}) => '连不上 ${name}。不在同一 WiFi 时，两边都要开着 Tailscale。';
+  String get notSentReasonRemote => '不在同一个 WiFi 时，两边都要开着 Tailscale。';
   @override
   String get details => '详细信息';
   @override
@@ -1142,7 +1156,7 @@ class Translations$shareme$send$zh_CN extends Translations$shareme$send$en {
   @override
   String sheetSummary({required num n, required Object size}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
     n,
-    other: '${n} 项 · ${size} · 原图未压缩',
+    other: '${n} 项 · ${size}',
   );
   @override
   String deliveredBody({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
@@ -1152,7 +1166,7 @@ class Translations$shareme$send$zh_CN extends Translations$shareme$send$en {
   @override
   String failedTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
     n,
-    other: '有 ${n} 个文件没发出去',
+    other: '${n} 个没发出去',
   );
 }
 
@@ -1234,9 +1248,17 @@ class Translations$shareme$receive$zh_CN extends Translations$shareme$receive$en
   @override
   String get fingerprint => '设备指纹';
   @override
+  String get stranger => '陌生设备';
+  @override
+  String get stopTitle => '停止接收？';
+  @override
+  String get notEncrypted => '没加密';
+  @override
+  String get later => '稍后决定（Esc）';
+  @override
   String get strangerTitle => '这台设备不在「我的设备」里。';
   @override
-  String get strangerBody => '确认是你认识的设备再接收。常用的设备可以在首页加为「我的设备」，以后一眼就能认出来。';
+  String get strangerBody => '确认是你认识的设备再接收。';
   @override
   String get unencrypted => '这次连接没有加密，同一个 WiFi 里的人可能看得到内容。';
   @override
@@ -1257,6 +1279,8 @@ class Translations$shareme$receive$zh_CN extends Translations$shareme$receive$en
   String get preparing => '正在准备接收……';
   @override
   String get receivingFrom => '正在接收，来自';
+  @override
+  String receivedShort({required Object n}) => '已收到 ${n} 项';
   @override
   String receivedFrom({required Object name, required Object time, required Object speed}) => '来自 ${name} · 用时 ${time} · 平均 ${speed}';
   @override
@@ -1318,7 +1342,7 @@ class Translations$shareme$receive$zh_CN extends Translations$shareme$receive$en
   @override
   String failedTitle({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
     n,
-    other: '有 ${n} 个文件没收到',
+    other: '${n} 个没收到',
   );
   @override
   String quickSaved({required num n, required Object name}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
@@ -1353,7 +1377,7 @@ class Translations$shareme$history$zh_CN extends Translations$shareme$history$en
   @override
   String get to => '发给';
   @override
-  String get unpaired => '（未配对）';
+  String get unpaired => ' · 未配对';
   @override
   String sendFailed({required Object reason}) => '发送失败：${reason}';
   @override
@@ -1424,6 +1448,16 @@ class Translations$shareme$history$zh_CN extends Translations$shareme$history$en
     other: '${n} 项照片和视频',
   );
   @override
+  String photoCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 张照片',
+  );
+  @override
+  String videoCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 个视频',
+  );
+  @override
   String fileCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
     n,
     other: '${n} 个文件',
@@ -1455,6 +1489,10 @@ class Translations$shareme$pair$zh_CN extends Translations$shareme$pair$en {
   @override
   String get hostTitle => '配对新设备';
   @override
+  String get scanMe => '用手机上的 Shuttle 扫一下';
+  @override
+  String get otherPc => '另一台电脑？';
+  @override
   String get pairHostHint => '在手机上打开 Shuttle，点首页右上角的扫码按钮，对准这个二维码。';
   @override
   String get hostOneUse => '二维码 5 分钟内有效，只能用一次，不含设备名。';
@@ -1479,9 +1517,9 @@ class Translations$shareme$pair$zh_CN extends Translations$shareme$pair$en {
   @override
   String get doneTitle => '已配对';
   @override
-  String doneAuto({required Object name}) => '以后在同一个 WiFi 下，两台设备会自动找到对方。${name} 发来的东西会直接接收，可以在设置里改。';
+  String doneAuto({required Object name}) => '${name} 发来的，以后直接收';
   @override
-  String doneAsk({required Object name}) => '以后在同一个 WiFi 下，两台设备会自动找到对方。${name} 发来的东西每次会先问你，可以在设置里改成直接接收。';
+  String doneAsk({required Object name}) => '${name} 发来的，会先问你';
   @override
   String get done => '完成';
   @override
@@ -1501,15 +1539,15 @@ class Translations$shareme$pair$zh_CN extends Translations$shareme$pair$en {
   @override
   String get failTimeout => '太久没有确认，没有配对。';
   @override
-  String get failProtocol => '配对没有完成（消息对不上）。请重新扫码。';
+  String get failProtocol => '配对没有完成（消息对不上），请再试一次。';
   @override
   String get scanTitle => '扫码配对';
   @override
-  String get scanFrame => '把电脑屏幕上的二维码放进框里';
+  String get scanFrame => '扫电脑上的二维码';
   @override
   String get scanHowTitle => '在电脑上这样打开二维码';
   @override
-  String get scanHowBody => '在电脑上打开 Shuttle，点「添加设备」，再用这台手机对准屏幕上的二维码。';
+  String get scanHowBody => '电脑上打开 Shuttle，点「添加设备」';
   @override
   String get notOurCode => '这不是 Shuttle 的配对二维码';
   @override
@@ -1569,7 +1607,7 @@ class Translations$shareme$pair$zh_CN extends Translations$shareme$pair$en {
   @override
   String typedEnter({required Object name}) => '输入 ${name} 上显示的数字';
   @override
-  String get typedHint => '互相输入一遍，才能确认连上的就是它，而不是冒充它的设备。';
+  String get typedHint => '两边都输入，才能确认不是冒充的设备';
   @override
   String typedWrong({required Object name, required Object n}) => '不对，再看看 ${name} 的屏幕（还能试 ${n} 次）';
   @override
@@ -1579,7 +1617,7 @@ class Translations$shareme$pair$zh_CN extends Translations$shareme$pair$en {
   @override
   String failNearbyOutdated({required Object name}) => '${name} 上的 Shuttle 是旧版，请先在它上面更新，再配对。';
   @override
-  String failCodeMismatch({required Object n}) => '连续 ${n} 次没对上，配对已取消。如果确定输入无误，可能有别的设备在冒充，先别在这个网络上配对。';
+  String failCodeMismatch({required Object n}) => '连续 ${n} 次没对上，配对已取消。没输错的话，可能有设备在冒充，先别在这个网络上配对。';
 }
 
 // Path: shareme.settings
@@ -1658,7 +1696,7 @@ class Translations$shareme$settings$zh_CN extends Translations$shareme$settings$
   @override
   String get tailscaleNotConnected => '没连上';
   @override
-  String get crossNetworkNote => '两台设备都装 Tailscale、登录同一个账号，不在同一 WiFi 时会自动经它连上（加密，不经过别人的服务器）。';
+  String get crossNetworkNote => '两台设备都装 Tailscale、登录同一个账号，不在同一个 WiFi 时会自动经它连上，全程加密。';
   @override
   String get thisDevice => '本机';
   @override
@@ -1668,7 +1706,7 @@ class Translations$shareme$settings$zh_CN extends Translations$shareme$settings$
   @override
   String get modeAll => '所有设备都直接收';
   @override
-  String get modeAllWarn => '不建议：同一个 WiFi 里的任何人都能直接把文件存进你的手机';
+  String get modeAllWarn => '不建议：同一 WiFi 的人都能存文件进来';
   @override
   String get saveLocation => '保存位置';
   @override
@@ -1694,7 +1732,7 @@ class Translations$shareme$settings$zh_CN extends Translations$shareme$settings$
   @override
   String get receivePin => '接收要输入密码';
   @override
-  String get receivePinNote => '所有设备发来都要先输这个密码';
+  String get receivePinNote => '所有设备都要先输密码';
   @override
   String get saveToHistoryNote => '收到的和发出的都记在「记录」里';
   @override
@@ -1740,9 +1778,91 @@ class Translations$shareme$settings$zh_CN extends Translations$shareme$settings$
   @override
   String get pairNewDesktopNote => '用手机扫这台电脑显示的二维码';
   @override
-  String removeTitle({required Object name}) => '把 ${name} 移出我的设备？';
+  String get linkHint => '扫码，或在浏览器里打开';
   @override
-  String get removeBody => '以后它发来的文件要你确认才收。';
+  String get copyLink => '复制链接';
+  @override
+  String get otherAddresses => '换个地址';
+  @override
+  String get noNetwork => '没有连上网络';
+  @override
+  String get alwaysOnTop => '窗口总在最前';
+  @override
+  String get animations => '动画';
+  @override
+  String get minimizeToTray => '关窗口时缩到托盘';
+  @override
+  String get launchMinimized => '自启动时不弹窗口';
+  @override
+  String get contextMenu => '文件右键「发送到」里显示';
+  @override
+  String get saveWindow => '记住窗口位置';
+  @override
+  String get verifyChecksums => '收完核对文件';
+  @override
+  String get createChecksums => '发送时附上校验码';
+  @override
+  String get linkAutoAccept => '用链接发时自动同意';
+  @override
+  String get server => '接收服务';
+  @override
+  String get serverOn => '开着';
+  @override
+  String get serverOff => '关着';
+  @override
+  String get needRestart => '改动要重启接收服务才生效';
+  @override
+  String get restart => '重启';
+  @override
+  String get start => '启动';
+  @override
+  String get stop => '停止';
+  @override
+  String get deviceType => '设备类型';
+  @override
+  String get deviceModel => '设备型号';
+  @override
+  String get port => '端口';
+  @override
+  String get networks => '用哪些网络';
+  @override
+  String get networksAll => '全部';
+  @override
+  String get networksSome => '部分';
+  @override
+  String get scanTimeout => '搜索超时（毫秒）';
+  @override
+  String get encryption => '加密';
+  @override
+  String get encryptionOffTitle => '关掉加密？';
+  @override
+  String get encryptionOffBody => '同一个 WiFi 里的人可能看到你传的内容。';
+  @override
+  String get encryptionOffConfirm => '关掉';
+  @override
+  String get encryptionKeep => '保持加密';
+  @override
+  String get network => '网络';
+  @override
+  String get portRange => '请填 1024 到 65535 之间的数字';
+  @override
+  String get multicastRange => '请填 224.0.0.0 到 239.255.255.255 之间的地址';
+  @override
+  String get timeoutRange => '请填 100 到 60000 之间的数字';
+  @override
+  String get multicast => '多播地址';
+  @override
+  String customNetwork({required Object port, required Object address}) => '端口或多播地址和默认不同，别的设备可能找不到你（默认 ${port}、${address}）';
+  @override
+  String get typeMobile => '手机';
+  @override
+  String get typeDesktop => '电脑';
+  @override
+  String get typeOther => '其他';
+  @override
+  String removeTitle({required Object name}) => '移出 ${name}？';
+  @override
+  String get removeBody => '以后它发来的要你确认。';
   @override
   String get remove => '移出';
   @override
@@ -1764,7 +1884,7 @@ class Translations$shareme$settings$zh_CN extends Translations$shareme$settings$
   @override
   String get mobileData => '用流量时也能传';
   @override
-  String get mobileDataNote => '两台设备都装 Tailscale、登录同一个账号，再扫码配对一次。之后不在同一 WiFi 时，会自动经 Tailscale 连上（加密，不经过我们的服务器）。';
+  String get mobileDataNote => '两台设备都装 Tailscale、登录同一个账号，再扫码配对一次。以后不在同一个 WiFi 时会自动经它连上，全程加密。';
   @override
   String tailscaleOn({required Object ip}) => '本机已连上 Tailscale：${ip}';
   @override
@@ -1823,7 +1943,7 @@ class Translations$shareme$update$zh_CN extends Translations$shareme$update$en {
   @override
   String get downloadFailed => '下载失败，稍后再试';
   @override
-  String versionBuild({required Object version, required Object build}) => '${version}（${build}）';
+  String versionBuild({required Object version, required Object build}) => '${version} (${build})';
 }
 
 // Path: receiveTab.infoBox
