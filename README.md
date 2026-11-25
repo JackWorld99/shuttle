@@ -18,7 +18,7 @@ Full quality. Encrypted. No cable, no cloud, no account.
 
 </div>
 
-<p align="center"><img src="docs/readme/demo.gif" alt="Share a photo on the phone, it lands on the computer a moment later" width="92%"></p>
+<p align="center"><img src="docs/readme/demo.gif" alt="Send photos from the phone, and they are on the computer a moment later" width="92%"></p>
 
 ## You know the drill
 
@@ -55,9 +55,16 @@ Share → tap your PC → done. The original file, every byte checked.
 
 ## Take a look
 
-| Your phone | Pick where it goes | Your PC | Pair in one scan |
-|:---:|:---:|:---:|:---:|
-| <img src="docs/readme/phone-home.png" width="200"> | <img src="docs/readme/phone-send.png" width="200"> | <img src="docs/readme/pc-home.png" width="260"> | <img src="docs/readme/pc-pair.png" width="260"> |
+<table>
+<tr><th>Your phone</th><th>Pick where it goes</th><th>On its way</th></tr>
+<tr>
+<td align="center"><img src="docs/readme/phone-home.png" width="240"></td>
+<td align="center"><img src="docs/readme/phone-send.png" width="240"></td>
+<td align="center"><img src="docs/readme/phone-sending.png" width="240"></td>
+</tr>
+<tr><th colspan="3">Your PC</th></tr>
+<tr><td colspan="3" align="center"><img src="docs/readme/pc-home.png" width="760"></td></tr>
+</table>
 
 ## Get started in a minute
 

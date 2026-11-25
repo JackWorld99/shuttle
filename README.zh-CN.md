@@ -18,7 +18,7 @@
 
 </div>
 
-<p align="center"><img src="docs/readme/demo-zh.gif" alt="手机上点分享，电脑马上收到" width="92%"></p>
+<p align="center"><img src="docs/readme/demo-zh.gif" alt="手机上点一下，电脑马上收到" width="92%"></p>
 
 ## 这些场景你一定熟
 
@@ -55,9 +55,16 @@
 
 ## 看一眼
 
-| 手机首页 | 选发给谁 | 电脑首页 | 扫一次就配好 |
-|:---:|:---:|:---:|:---:|
-| <img src="docs/readme/phone-home-zh.png" width="200"> | <img src="docs/readme/phone-send-zh.png" width="200"> | <img src="docs/readme/pc-home-zh.png" width="260"> | <img src="docs/readme/pc-pair-zh.png" width="260"> |
+<table>
+<tr><th>手机首页</th><th>选发给谁</th><th>正在发</th></tr>
+<tr>
+<td align="center"><img src="docs/readme/phone-home-zh.png" width="240"></td>
+<td align="center"><img src="docs/readme/phone-send-zh.png" width="240"></td>
+<td align="center"><img src="docs/readme/phone-sending-zh.png" width="240"></td>
+</tr>
+<tr><th colspan="3">电脑首页</th></tr>
+<tr><td colspan="3" align="center"><img src="docs/readme/pc-home-zh.png" width="760"></td></tr>
+</table>
 
 ## 一分钟上手
 
