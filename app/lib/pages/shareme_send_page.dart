@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +12,7 @@ import 'package:localsend_app/pages/tabs/send_tab_vm.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/file_transfer_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
+import 'package:localsend_app/util/message_preview.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/shareme_format.dart';
 import 'package:localsend_app/util/shareme_own_page.dart';
@@ -422,7 +422,7 @@ class _Stage extends StatelessWidget {
   static List<FilmFrame> _frames(SendSessionState s) => [
     for (final f in s.files.values)
       _isMessage(f)
-          ? FilmFrame(fileName: utf8.decode(f.bytes!, allowMalformed: true), fileType: FileType.text, path: null, isMessage: true)
+          ? FilmFrame(fileName: messageLabelOf(f.bytes!), fileType: FileType.text, path: null, isMessage: true)
           : FilmFrame(fileName: f.file.fileName, fileType: f.file.fileType, path: f.path, assetId: f.asset?.id, bytes: f.thumbnail),
   ];
 

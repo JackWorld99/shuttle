@@ -163,6 +163,7 @@
       "openLink": "打开链接",
       "close": "关闭",
       "savedToHistory": "已存进记录",
+      "excerpt": "只显示开头，复制的是全文",
       "sentTo": "已发给 {name}",
       "count(plural)": {
         "other": "{n} 字"

@@ -8,6 +8,7 @@ import 'package:localsend_app/pages/receive_page.dart' show ReceivePageVm;
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/paired_devices_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
+import 'package:localsend_app/util/message_preview.dart';
 import 'package:localsend_app/widget/shareme/device_avatar.dart';
 import 'package:localsend_app/widget/shareme/send_text_sheet.dart' show looksLikeLink;
 import 'package:localsend_app/widget/shareme/sm_sheets.dart';
@@ -153,7 +154,7 @@ class _SmMessageViewState extends State<SmMessageView> {
     final message = widget.message;
     final url = widget.isLink ? Uri.tryParse(message.trim()) : null;
     final seal = widget.sealFingerprint;
-    final footnote = widget.footnote;
+    final footnote = [?widget.footnote, if (isMessageExcerpt(message)) t.shareme.text.excerpt].join(' · ').emptyToNull;
 
     Future<void> copy() async {
       await Clipboard.setData(ClipboardData(text: message));
@@ -195,10 +196,10 @@ class _SmMessageViewState extends State<SmMessageView> {
                         children: [
                           Text(url.host, style: ShareMeText.deviceName.copyWith(color: c.ink)),
                           const SizedBox(height: 6),
-                          SelectableText(message.trim(), style: ShareMeText.data.copyWith(color: c.ink2, fontSize: 13, height: 1.5)),
+                          SelectableText(messageExcerpt(message.trim()), style: ShareMeText.data.copyWith(color: c.ink2, fontSize: 13, height: 1.5)),
                         ],
                       )
-                    : SelectableText(message, style: ShareMeText.body.copyWith(color: c.ink)),
+                    : SelectableText(messageExcerpt(message), style: ShareMeText.body.copyWith(color: c.ink)),
               ),
             ),
             const SizedBox(height: 16),
@@ -260,7 +261,7 @@ void showReceivedTextSnack({required String alias, required String message, requ
               style: ShareMeText.body.copyWith(color: const Color(0xFFF3F3F1), fontWeight: FontWeight.w600),
             ),
             Text(
-              message.replaceAll('\n', ' '),
+              messageLabel(message),
               style: ShareMeText.meta.copyWith(color: const Color(0xFFB5B8BC)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

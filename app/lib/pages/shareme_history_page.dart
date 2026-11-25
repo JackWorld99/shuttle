@@ -11,6 +11,7 @@ import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/receive_history_provider.dart';
 import 'package:localsend_app/provider/sent_history_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
+import 'package:localsend_app/util/message_preview.dart';
 import 'package:localsend_app/util/native/channel/android_channel.dart' as android_channel;
 import 'package:localsend_app/util/native/file_picker.dart';
 import 'package:localsend_app/util/native/open_file.dart';
@@ -450,9 +451,9 @@ String _failReason(SentHistoryEntry s) {
 /// Title for a text: its first line; links drop the https:// prefix.
 String _messageTitle(String message) {
   final s = message.trim();
-  if (looksLikeLink(s)) return s.replaceFirst(RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://'), '');
+  if (looksLikeLink(s)) return messageLabel(s.replaceFirst(RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://'), ''));
   final firstLine = s.split('\n').first.trim();
-  return firstLine.isEmpty ? s : firstLine;
+  return messageLabel(firstLine.isEmpty ? s : firstLine);
 }
 
 String _filesTitle(HistoryRecord r) {

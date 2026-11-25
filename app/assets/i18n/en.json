@@ -169,6 +169,7 @@
       "openLink": "Open link",
       "close": "Close",
       "savedToHistory": "Saved to history",
+      "excerpt": "Only the beginning is shown, Copy takes everything",
       "sentTo": "Sent to {name}",
       "count(plural)": {
         "one": "1 char",

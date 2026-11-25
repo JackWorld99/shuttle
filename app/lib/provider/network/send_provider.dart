@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
@@ -18,6 +17,7 @@ import 'package:localsend_app/provider/network/nearby_devices_provider.dart' sho
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/provider/sent_history_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
+import 'package:localsend_app/util/message_preview.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/dialogs/pin_dialog.dart';
 import 'package:localsend_isolates/isolate.dart';
@@ -123,9 +123,8 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
                 fileType: file.fileType,
                 hash: null,
                 // calculated below
-                preview: files.length == 1 && files.first.fileType == FileType.text && files.first.bytes != null
-                    ? utf8.decode(files.first.bytes!) // send simple message by embedding it into the preview
-                    : null,
+                // send simple message by embedding it into the preview
+                preview: files.length == 1 && file.fileType == FileType.text ? createMessagePreview(file.bytes) : null,
                 metadata: file.lastModified != null || file.lastAccessed != null
                     ? FileMetadata(
                         lastModified: file.lastModified,
@@ -297,6 +296,10 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
 
               // wait until animation is finished
               await sleepAsync(500);
+              if (state[sessionId] == null) {
+                // session has been canceled in the meantime
+                return;
+              }
 
               pin = await showDialog<String>(
                 context: Routerino.context, // ignore: use_build_context_synchronously
@@ -307,6 +310,11 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
               );
 
               pinFirstAttempt = false;
+
+              if (state[sessionId] == null) {
+                // session has been canceled while the dialog was open
+                return;
+              }
 
               if (pin == null) {
                 state = state.updateSession(
@@ -368,6 +376,16 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     }
 
     if (response == null) {
+      return;
+    }
+
+    if (state[sessionId] == null) {
+      // The session has been canceled locally while the response was on its way,
+      // so the session the receiver just created must be canceled as well.
+      final remoteSessionId = response.response?.sessionId;
+      if (remoteSessionId != null) {
+        unawaited(_notifyReceiverCancel(target, remoteSessionId));
+      }
       return;
     }
 
@@ -752,12 +770,19 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     }
 
     // notify the receiver
-    final target = sessionState.target;
+    unawaited(_notifyReceiverCancel(sessionState.target, remoteSessionId));
+
+    // finally, close session locally
+    closeSession(sessionId);
+  }
+
+  /// Tells [target] that its session [remoteSessionId] is canceled.
+  /// Errors are only logged.
+  Future<void> _notifyReceiverCancel(Device target, String remoteSessionId) async {
     try {
-      ref
+      await ref
           .read(httpProvider)
           .pinnedTo(target.fingerprint)
-          // ignore: discarded_futures
           .cancel(
             protocol: target.getProtocolType(),
             ip: target.ip!,
@@ -767,9 +792,6 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     } catch (e) {
       _logger.warning('Error while canceling session', e);
     }
-
-    // finally, close session locally
-    closeSession(sessionId);
   }
 
   void cancelSessionByReceiver(String sessionId) {

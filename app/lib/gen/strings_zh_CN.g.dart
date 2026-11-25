@@ -1222,6 +1222,8 @@ class Translations$shareme$text$zh_CN extends Translations$shareme$text$en {
   @override
   String get savedToHistory => '已存进记录';
   @override
+  String get excerpt => '只显示开头，复制的是全文';
+  @override
   String sentTo({required Object name}) => '已发给 ${name}';
   @override
   String count({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(

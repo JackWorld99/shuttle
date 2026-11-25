@@ -231,7 +231,10 @@ impl From<ClientError> for RsHttpClientError {
                 status: e.status,
                 message: e.message,
             },
-            ClientError::Reqwest(e) => RsHttpClientError::Reqwest(ErrorChain(&e).to_string()),
+            // reqwest errors include the request URL, which may carry the PIN.
+            ClientError::Reqwest(e) => {
+                RsHttpClientError::Reqwest(ErrorChain(&e.without_url()).to_string())
+            }
             ClientError::Json(e) => RsHttpClientError::Json(e.to_string()),
             ClientError::Io(e) => RsHttpClientError::Io(e.to_string()),
             ClientError::Other(e) => RsHttpClientError::Other(e.to_string()),
@@ -255,4 +258,64 @@ pub struct _PrepareUploadResult {
 pub struct ResultWithPublicKeyRegisterResponseDto {
     pub public_key: Option<String>,
     pub body: RegisterResponseDto,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn error_does_not_expose_the_pin() {
+        let cert = localsend::crypto::cert::generate_self_signed().unwrap();
+        let client = create_client(
+            cert.private_key_pem,
+            cert.certificate_pem,
+            LsHttpClientVersion::V2,
+            Some(cert.fingerprint.clone()),
+            None,
+        )
+        .unwrap_or_else(|_| panic!("failed to create client"));
+        // Accept and immediately close the connection so the TLS handshake fails.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
+        let payload = PrepareUploadRequestDto {
+            info: RegisterDto {
+                alias: "Test".into(),
+                version: "2.1".into(),
+                device_model: None,
+                device_type: None,
+                token: cert.fingerprint,
+                port: 53317,
+                protocol: ProtocolType::Https,
+                has_web_interface: false,
+            },
+            files: Default::default(),
+        };
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            client.prepare_upload(
+                ProtocolType::Https,
+                "127.0.0.1",
+                port,
+                payload,
+                None,
+                Some("test-pin-112233".into()),
+                &crate::api::cancel::create_cancellation_token(),
+            ),
+        )
+        .await
+        .expect("request must fail promptly");
+        server.abort();
+
+        let message = match result {
+            Err(RsHttpClientError::Reqwest(message)) => message,
+            _ => panic!("expected a transport error"),
+        };
+        assert!(!message.contains("test-pin-112233"), "{message}");
+        assert!(!message.contains("pin="), "{message}");
+    }
 }

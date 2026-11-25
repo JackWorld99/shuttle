@@ -8,6 +8,7 @@ import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/pages/tabs/send_tab_vm.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
+import 'package:localsend_app/util/message_preview.dart';
 import 'package:localsend_app/widget/shareme/send_target_sheet.dart';
 import 'package:localsend_app/widget/shareme/sm_sheets.dart';
 import 'package:localsend_isolates/model/file_type.dart';
@@ -131,7 +132,7 @@ class _SendTextSheetState extends State<_SendTextSheet> with Refena {
                                 style: ShareMeText.meta.copyWith(color: c.ink2),
                               ),
                               Text(
-                                clip,
+                                messageLabel(clip),
                                 style: (clipIsLink ? ShareMeText.data : ShareMeText.body).copyWith(color: c.ink, fontSize: 13),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,

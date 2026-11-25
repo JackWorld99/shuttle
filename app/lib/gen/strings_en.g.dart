@@ -1464,6 +1464,9 @@ class Translations$shareme$text$en {
   /// en: 'Saved to history'
   String get savedToHistory => 'Saved to history';
 
+  /// en: 'Only the beginning is shown, Copy takes everything'
+  String get excerpt => 'Only the beginning is shown, Copy takes everything';
+
   /// en: 'Sent to {name}'
   String sentTo({required Object name}) => 'Sent to ${name}';
 

@@ -150,13 +150,13 @@ class ReceiveController {
           statuses: {for (final file in files.values) file.id: FileStatus.queue},
         );
 
-    bool quickSave = settings.quickSave && server.getState().session?.message == null;
-    final quickSaveFromFavorites = settings.quickSaveFromFavorites && server.getState().session?.message == null;
+    bool quickSave = settings.quickSave && server.getState().session?.isMessageRequest != true;
+    final quickSaveFromFavorites = settings.quickSaveFromFavorites && server.getState().session?.isMessageRequest != true;
     // Shuttle: only verified "my devices" are accepted directly; devices added with just "Add" still ask first (see isVerifiedMine)
     if (quickSaveFromFavorites && isVerifiedMineDevice(server.ref, senderFingerprint)) {
       quickSave = true;
     }
-    if (server.getState().webUpload && settings.receiveViaLinkAutoAccept && server.getState().session?.message == null) {
+    if (server.getState().webUpload && settings.receiveViaLinkAutoAccept && server.getState().session?.isMessageRequest != true) {
       // The upload page (receive via link) is being served and requests should be accepted automatically.
       quickSave = true;
     }
@@ -501,8 +501,8 @@ class ReceiveController {
       // Only auto-close fully successful sessions: a failed file may still be
       // retried by the sender (e.g. after a checksum mismatch), which requires
       // the session to stay open.
-      bool quickSave = settings.quickSave && !hasError && server.getState().session?.message == null;
-      final quickSaveFromFavorites = settings.quickSaveFromFavorites && !hasError && server.getState().session?.message == null;
+      bool quickSave = settings.quickSave && !hasError && server.getState().session?.isMessageRequest != true;
+      final quickSaveFromFavorites = settings.quickSaveFromFavorites && !hasError && server.getState().session?.isMessageRequest != true;
       if (quickSaveFromFavorites && isVerifiedMineDevice(server.ref, session.sender.fingerprint)) {
         quickSave = true;
       }
