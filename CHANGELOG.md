@@ -7,6 +7,7 @@ Shuttle is based on [LocalSend](https://github.com/localsend/localsend) 1.18.2; 
 
 | Build | Date | Changes |
 |---|---|---|
+| 2312 | 2026-11-26 | The small window in the corner no longer takes the keyboard when Shuttle is minimized on the taskbar (2307 still did). Canceling a send while the receiver answers stops it instead of starting the transfer; a very long text no longer freezes the window; error messages no longer contain the PIN; "Photo.JPG" keeps its ".JPG" when it is renamed to "Photo (2).JPG"; rustls 0.23.46 |
 | 2307 | 2026-11-25 | New look on the phone and the computer: fewer words, livelier transfer and pairing pages, reworked light and dark themes. Smoother on Windows and when switching tabs on the phone. The small window in the corner no longer flashes, takes the keyboard or gets stuck; windows open with their content already drawn; the title bar follows the app's theme. A request that arrives while an older page is closing is no longer declined by mistake |
 | 2306 | 2026-11-22 | Pairing by QR code no longer asks you to compare digits; two computers pair by typing each other's 6-digit code; the paired page can rename the device or remove one that isn't yours |
 | 2305 | 2026-11-22 | Source code published; updates now come from this repository and are signed with a new key, so install this version once by hand (auto-update resumes afterwards). On the computer, new installs follow the system language; the Windows installer is in English and Chinese; the drop zone shows the name from "My devices"; clearer English wording |

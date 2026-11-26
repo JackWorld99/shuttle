@@ -117,6 +117,34 @@ class WinWindow {
 
   void leavesTray() => _setActivatable(true);
 
+  static int _standIn = 0;
+
+  /// Windows brings a minimized window to the front when it is restored, whatever way and whatever style, if it is still the active window
+  /// of its thread. It often is: being minimized doesn't change that, nor does another program in front. So a window nobody ever sees
+  /// becomes the active one of the thread.
+  void _standDown() {
+    if (focused || GetActiveWindow() != _handle) return;
+    if (_standIn == 0) {
+      _standIn = using(
+        (arena) => CreateWindowEx(
+          WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+          'STATIC'.toNativeUtf16(allocator: arena),
+          nullptr,
+          WS_POPUP,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0,
+          nullptr,
+        ),
+      );
+    }
+    SetActiveWindow(_standIn);
+  }
+
   /// Windows leaves a window that can't be activated out of the taskbar, unless it has [taskbarButton]
   void _setActivatable(bool on, {bool taskbarButton = false}) {
     final style = GetWindowLongPtr(_handle, GWL_EXSTYLE) & ~(WS_EX_NOACTIVATE | WS_EX_APPWINDOW);
@@ -149,6 +177,7 @@ class WinWindow {
 
   /// Visible and neither minimized nor maximized
   void showInactive() {
+    if (IsIconic(_handle) != 0) _standDown();
     // More than once: the first call of a process may do what the process was started with instead (hidden, minimized), and a window that
     // was maximized before it was minimized is maximized again first
     for (var i = 0; i < 3; i++) {
