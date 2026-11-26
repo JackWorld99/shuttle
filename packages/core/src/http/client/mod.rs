@@ -15,6 +15,7 @@ use reqwest::Response;
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -47,6 +48,28 @@ pub enum ClientError {
 
     #[error("Upload cancelled")]
     Cancelled,
+
+    /// Shuttle: the upload made no progress for [UploadOptions::stall_timeout],
+    /// e.g. because the network went away without closing the connection.
+    #[error("The connection stalled")]
+    Stalled,
+}
+
+/// Shuttle: how an upload continues an interrupted one and when it gives up
+/// on a connection that stopped moving.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UploadOptions {
+    /// Where the upload starts (resume extension). Only `Some` for a file the
+    /// receiver listed in its prepare-upload answer, with that offset or 0;
+    /// `None` uploads the whole file to any receiver.
+    pub offset: Option<u64>,
+
+    /// Fail with [ClientError::Stalled] when no file content could be sent for
+    /// this long, e.g. because the network went away without closing the
+    /// connection (a lost Wi-Fi only fails the request after many minutes of
+    /// TCP retransmissions). The wait for the response after the last byte is
+    /// not limited.
+    pub stall_timeout: Option<std::time::Duration>,
 }
 
 impl LsHttpClient {
@@ -126,6 +149,11 @@ impl LsHttpClient {
         }
     }
 
+    /// Uploads a file of `file_size` bytes.
+    ///
+    /// `progress` is called with the number of bytes of the file sent so far
+    /// (counting from the start of the file, also when continuing at
+    /// [UploadOptions::offset]).
     pub async fn upload(
         &self,
         protocol: model::discovery::ProtocolType,
@@ -136,25 +164,87 @@ impl LsHttpClient {
         file_id: &str,
         token: &str,
         content: model::transfer::FileContent,
+        file_size: u64,
+        options: UploadOptions,
         progress: impl Fn(u64) + Send + 'static,
         cancel: tokio_util::sync::CancellationToken,
     ) -> Result<(), ClientError> {
-        let body = upload_body(content, progress);
-        match self {
-            LsHttpClient::V2(client) => {
-                client
-                    .upload(
-                        protocol, ip, port, public_key, session_id, file_id, token, body, cancel,
-                    )
-                    .await
+        let offset = options.offset.unwrap_or(0);
+
+        // Shuttle: the time of the last progress, in milliseconds since `start`,
+        // and whether the whole body was handed to the connection.
+        let start = std::time::Instant::now();
+        let last_progress = Arc::new(AtomicU64::new(0));
+        let body_sent = Arc::new(AtomicBool::new(offset >= file_size));
+        let body = {
+            let last_progress = last_progress.clone();
+            let body_sent = body_sent.clone();
+            upload_body(content, offset, move |sent| {
+                last_progress.store(start.elapsed().as_millis() as u64, Ordering::Relaxed);
+                if sent >= file_size {
+                    body_sent.store(true, Ordering::Relaxed);
+                }
+                progress(sent);
+            })
+        };
+
+        let request = async {
+            match self {
+                LsHttpClient::V2(client) => {
+                    client
+                        .upload_from(
+                            protocol,
+                            ip,
+                            port,
+                            public_key,
+                            session_id,
+                            file_id,
+                            token,
+                            options.offset,
+                            body,
+                            cancel,
+                        )
+                        .await
+                }
+                LsHttpClient::V3(client) => {
+                    if offset > 0 {
+                        return Err(ClientError::Other(anyhow::anyhow!(
+                            "Continuing an upload is not supported with protocol v3"
+                        )));
+                    }
+                    client
+                        .upload(
+                            protocol, ip, port, public_key, session_id, file_id, token, body,
+                            cancel,
+                        )
+                        .await
+                }
             }
-            LsHttpClient::V3(client) => {
-                client
-                    .upload(
-                        protocol, ip, port, public_key, session_id, file_id, token, body, cancel,
-                    )
-                    .await
+        };
+
+        let Some(stall_timeout) = options.stall_timeout else {
+            return request.await;
+        };
+        let stalled = async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                if body_sent.load(Ordering::Relaxed) {
+                    // Waiting for the response is not limited.
+                    std::future::pending::<()>().await;
+                }
+                let now = start.elapsed().as_millis() as u64;
+                let idle = now.saturating_sub(last_progress.load(Ordering::Relaxed));
+                if idle >= stall_timeout.as_millis() as u64 {
+                    tracing::warn!(
+                        "Upload made no progress for {idle} ms, giving up on the connection"
+                    );
+                    return;
+                }
             }
+        };
+        tokio::select! {
+            result = request => result,
+            _ = stalled => Err(ClientError::Stalled),
         }
     }
 
@@ -172,18 +262,20 @@ impl LsHttpClient {
     }
 }
 
-/// Builds a streaming request body from the file content, invoking `progress`
-/// with the cumulative number of bytes read as each chunk is sent.
+/// Builds a streaming request body from the file content starting at
+/// `offset`, invoking `progress` with the position in the file (the
+/// cumulative number of bytes read plus `offset`) as each chunk is sent.
 ///
 /// An I/O error while reading the file fails the body, which aborts the
 /// request. Ending the body early instead would send a complete but truncated
 /// upload that the receiver stores as a short (often empty) file.
 pub(super) fn upload_body(
     content: model::transfer::FileContent,
+    offset: u64,
     progress: impl Fn(u64) + Send + 'static,
 ) -> reqwest::Body {
-    let mut sent = 0_u64;
-    let stream = content.into_stream().map(move |chunk| {
+    let mut sent = offset;
+    let stream = content.into_stream_from(offset).map(move |chunk| {
         let chunk = chunk?;
         sent += chunk.len() as u64;
         progress(sent);
@@ -377,6 +469,7 @@ mod tests {
                 has_web_interface: false,
             },
             files: Default::default(),
+            shuttle_resume: None,
         }
     }
 
@@ -518,6 +611,8 @@ mod tests {
                 "file",
                 "token",
                 model::transfer::FileContent::Stream(content_rx),
+                4,
+                UploadOptions::default(),
                 |_| {},
                 cancel.clone(),
             );
@@ -547,5 +642,74 @@ mod tests {
                 result.err()
             );
         }
+    }
+
+    /// Shuttle: a peer that stops taking data without closing the connection
+    /// (a network that went away silently) fails the upload after the stall
+    /// timeout instead of after minutes of TCP retransmissions.
+    #[tokio::test]
+    async fn upload_fails_when_the_connection_stalls() {
+        let identity = crypto::cert::generate_self_signed().unwrap();
+        let client = LsHttpClient::new(
+            &identity.private_key_pem,
+            &identity.certificate_pem,
+            LsHttpClientVersion::V2,
+            None,
+            None,
+        )
+        .unwrap();
+
+        // Accepts the connection and never reads from it.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let peer = tokio::spawn(async move {
+            let (_stream, _) = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        });
+
+        // More than the socket buffers on both sides can take.
+        const SIZE: u64 = 256 * 1024 * 1024;
+        let (content_tx, content_rx) = tokio::sync::mpsc::channel(4);
+        let producer = tokio::spawn(async move {
+            let chunk = bytes::Bytes::from(vec![0u8; 1024 * 1024]);
+            for _ in 0..SIZE / (1024 * 1024) {
+                if content_tx.send(chunk.clone()).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let started = std::time::Instant::now();
+        let result = tokio::time::timeout(
+            Duration::from_secs(20),
+            client.upload(
+                ProtocolType::Http,
+                "127.0.0.1",
+                port,
+                None,
+                "session",
+                "file",
+                "token",
+                model::transfer::FileContent::Stream(content_rx),
+                SIZE,
+                UploadOptions {
+                    offset: None,
+                    stall_timeout: Some(Duration::from_secs(2)),
+                },
+                |_| {},
+                CancellationToken::new(),
+            ),
+        )
+        .await
+        .expect("the stalled upload must give up");
+        peer.abort();
+        producer.abort();
+
+        assert!(
+            matches!(result, Err(ClientError::Stalled)),
+            "unexpected result: {:?}",
+            result.err()
+        );
+        assert!(started.elapsed() >= Duration::from_secs(2));
     }
 }

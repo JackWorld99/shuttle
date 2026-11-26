@@ -1,13 +1,15 @@
 use crate::http::dto_v2::{
     InfoResponseDtoV2, PrepareUploadRequestDtoV2, PrepareUploadResponseDtoV2, RegisterDtoV2,
-    RegisterResponseDtoV2,
+    RegisterResponseDtoV2, ShuttleResumeRequest,
 };
 use crate::http::server::common::collect_to_json::CollectToJson;
 use crate::http::server::common::error::AppError;
 use crate::http::server::common::pin::check_pin;
 use crate::http::server::common::query::parse_query;
 use crate::http::server::common::response::{empty_body, BoxedBody, JsonResponse};
-use crate::http::server::common::save::{FileTimestamps, FileUploadTarget, SaveResult};
+use crate::http::server::common::save::{
+    FileTimestamps, FileUploadTarget, SaveResult, UploadParams,
+};
 use crate::http::server::common::session::{
     FileStatusV2, PendingSessionV2, SessionFileV2, SessionStateV2, UploadSessionV2,
 };
@@ -65,6 +67,17 @@ pub enum ServerEventV2 {
         /// The offered files, mapped by file ID.
         files: HashMap<String, FileDto>,
 
+        /// Shuttle's resume extension, if the sender asked for it. Only passed
+        /// on together with `cert_fingerprint`: continuing an upload is bound
+        /// to the sender's certificate. Answer with
+        /// [PrepareUploadDecisionV2::AcceptWithOffsets] to let files continue.
+        ///
+        /// When `resume_of` names the session that was active until now, that
+        /// session was replaced by this request (its
+        /// [ServerEventV2::SessionEnd] with [SessionEndReasonV2::Replaced]
+        /// came first).
+        resume: Option<ShuttleResumeRequest>,
+
         /// Channel to send the decision (accept all, a subset, or decline).
         decision_tx: oneshot::Sender<PrepareUploadDecisionV2>,
     },
@@ -83,6 +96,16 @@ pub enum ServerEventV2 {
 
         /// The metadata of the file being uploaded.
         file: FileDto,
+
+        /// Shuttle: the number of bytes of the file the target must already
+        /// hold, from an earlier interrupted upload: this upload continues at
+        /// that offset. 0 for an upload of the whole file.
+        offset: u64,
+
+        /// Shuttle: whether the upload can be continued later if it is
+        /// interrupted. The application should then keep the received part
+        /// (reported on `saved_tx` of the target) instead of discarding it.
+        resumable: bool,
 
         /// Channel to send the target the file content should be written to.
         target_tx: oneshot::Sender<FileUploadTarget>,
@@ -138,6 +161,17 @@ pub enum PrepareUploadDecisionV2 {
     /// An empty set responds with 204 (no file transfer needed).
     Accept(HashSet<String>),
 
+    /// Shuttle: like [PrepareUploadDecisionV2::Accept], and the files in the map
+    /// can be continued if their upload is interrupted. The value is the
+    /// offset their upload starts at: the number of bytes the application
+    /// already holds from an earlier interrupted upload of the same file by the
+    /// same sender, or 0.
+    ///
+    /// Offsets are ignored unless the request asked for the resume extension
+    /// and the file has a checksum (which is then always verified), and when
+    /// they exceed the file size.
+    AcceptWithOffsets(HashSet<String>, HashMap<String, u64>),
+
     /// Decline the request (403).
     Decline,
 }
@@ -150,6 +184,11 @@ pub enum SessionEndReasonV2 {
 
     /// The sender cancelled the session via `POST /api/localsend/v2/cancel`.
     Cancelled,
+
+    /// Shuttle: the sender lost its connection and continues the session in a
+    /// new one. The [ServerEventV2::PrepareUpload] of the new session follows,
+    /// naming this session in `resume.resume_of`.
+    Replaced,
 }
 
 pub(crate) async fn register(
@@ -249,6 +288,14 @@ pub(crate) async fn prepare_upload(
         return Err(AppError::BadRequest("No files provided".to_string()));
     }
 
+    // Shuttle: continuing uploads is bound to the sender's certificate; without
+    // one there is no identity to bind it to.
+    let cert_fingerprint = client_info.cert_fingerprint();
+    let resume = match cert_fingerprint {
+        Some(_) => payload.shuttle_resume.take(),
+        None => None,
+    };
+
     // Senders on macOS send NFD names (e.g. Korean as separate jamo). Normalize
     // once here so every consumer (UI, history, save path) sees NFC.
     for file in payload.files.values_mut() {
@@ -259,19 +306,43 @@ pub(crate) async fn prepare_upload(
     let cancelled = CancellationToken::new();
 
     // Claim the single session slot.
-    {
+    let replaced = {
         let mut slot = v2.session.lock().await;
-        if slot.is_some() {
-            return Err(AppError::Message(
-                StatusCode::CONFLICT,
-                "Blocked by another session".to_string(),
-            ));
-        }
+        let replaced = match slot.as_ref() {
+            None => None,
+            // Shuttle: the sender continues its own session after losing the
+            // connection, which this server may not have noticed yet. The old
+            // session gives way; its uploads stop and keep what they received.
+            Some(SessionStateV2::Active(active))
+                if is_continuation_of(active, resume.as_ref(), cert_fingerprint.as_deref()) =>
+            {
+                active.abort.cancel();
+                Some(active.session_id.clone())
+            }
+            Some(_) => {
+                return Err(AppError::Message(
+                    StatusCode::CONFLICT,
+                    "Blocked by another session".to_string(),
+                ));
+            }
+        };
         *slot = Some(SessionStateV2::Pending(PendingSessionV2 {
             session_id: session_id.clone(),
             sender_ip: client_info.ip,
             cancel: cancelled.clone(),
         }));
+        replaced
+    };
+
+    if let Some(replaced) = replaced {
+        tracing::info!("Upload session {replaced} continued by {session_id}");
+        let _ = v2
+            .event_tx
+            .send(ServerEventV2::SessionEnd {
+                session_id: replaced,
+                reason: SessionEndReasonV2::Replaced,
+            })
+            .await;
     }
 
     // Frees the slot again if this request is aborted before a session is created.
@@ -282,8 +353,9 @@ pub(crate) async fn prepare_upload(
         session_id: session_id.clone(),
         ip: client_info.ip,
         info: payload.info,
-        cert_fingerprint: client_info.cert_fingerprint(),
+        cert_fingerprint: cert_fingerprint.clone(),
         files: payload.files.clone(),
+        resume: resume.clone(),
         decision_tx,
     };
     if v2.event_tx.send(event).await.is_err() {
@@ -305,7 +377,7 @@ pub(crate) async fn prepare_upload(
         }
     };
 
-    let accepted_ids = match decision {
+    let (accepted_ids, offsets) = match decision {
         PrepareUploadDecisionV2::Decline => {
             pending_guard.clear().await;
             return Err(AppError::Message(
@@ -313,7 +385,8 @@ pub(crate) async fn prepare_upload(
                 "Rejected".to_string(),
             ));
         }
-        PrepareUploadDecisionV2::Accept(ids) => ids,
+        PrepareUploadDecisionV2::Accept(ids) => (ids, HashMap::new()),
+        PrepareUploadDecisionV2::AcceptWithOffsets(ids, offsets) => (ids, offsets),
     };
 
     let files: HashMap<String, SessionFileV2> = payload
@@ -321,11 +394,21 @@ pub(crate) async fn prepare_upload(
         .into_iter()
         .filter(|(id, _)| accepted_ids.contains(id))
         .map(|(id, dto)| {
+            // Shuttle: only a file with a checksum can be continued, because
+            // the checksum is what proves that the parts belong together.
+            let resume_offset = match resume.is_some() && dto.sha256.is_some() {
+                true => offsets
+                    .get(&id)
+                    .copied()
+                    .filter(|offset| *offset <= dto.size),
+                false => None,
+            };
             let file = SessionFileV2 {
                 dto,
                 token: Uuid::new_v4().to_string(),
                 status: FileStatusV2::Pending,
                 attempts: 0,
+                resume_offset,
             };
             (id, file)
         })
@@ -344,11 +427,22 @@ pub(crate) async fn prepare_upload(
         .map(|(id, file)| (id.clone(), file.token.clone()))
         .collect();
 
+    // Shuttle: answered whenever the sender asked, so it learns that this
+    // receiver can continue uploads, even if no file can be continued now.
+    let resume_offsets = resume.as_ref().map(|_| {
+        files
+            .iter()
+            .filter_map(|(id, file)| file.resume_offset.map(|offset| (id.clone(), offset)))
+            .collect::<HashMap<String, u64>>()
+    });
+
     {
         let mut slot = v2.session.lock().await;
         *slot = Some(SessionStateV2::Active(UploadSessionV2 {
             session_id: session_id.clone(),
             sender_ip: client_info.ip,
+            sender_cert: cert_fingerprint,
+            abort: CancellationToken::new(),
             files,
         }));
     }
@@ -361,6 +455,7 @@ pub(crate) async fn prepare_upload(
         body: PrepareUploadResponseDtoV2 {
             session_id,
             files: tokens,
+            shuttle_resume: resume_offsets,
         },
     }
     .into_response())
@@ -385,8 +480,16 @@ pub(crate) async fn upload(
         ));
     };
 
+    // Shuttle: the upload continues an earlier one at this offset.
+    let requested_offset = match query.get("offset") {
+        None => None,
+        Some(offset) => Some(offset.parse::<u64>().map_err(|_| {
+            AppError::Message(StatusCode::BAD_REQUEST, "Invalid offset".to_string())
+        })?),
+    };
+
     // Validate the request and mark the file as in progress.
-    let file_dto = {
+    let (file_dto, offset, resumable, abort) = {
         let mut slot = v2.session.lock().await;
         let Some(SessionStateV2::Active(session)) = slot.as_mut() else {
             return Err(invalid_token_error());
@@ -400,16 +503,30 @@ pub(crate) async fn upload(
         if file.token != *token || file.status != FileStatusV2::Pending {
             return Err(invalid_token_error());
         }
+        // Only the offset named in the prepare-upload answer (or none, i.e.
+        // the whole file) is accepted, like an Upload-Offset in tus.
+        let offset = match (requested_offset, file.resume_offset) {
+            (None | Some(0), _) => 0,
+            (Some(requested), Some(granted)) if requested == granted => requested,
+            _ => return Err(offset_mismatch_error()),
+        };
         file.status = FileStatusV2::InProgress;
         file.attempts = file.attempts.saturating_add(1);
-        file.dto.clone()
+        (
+            file.dto.clone(),
+            offset,
+            file.resume_offset.is_some(),
+            session.abort.child_token(),
+        )
     };
 
     // Marks the file as failed if this request is aborted mid-transfer.
     let mut upload_guard = UploadGuard::new(v2.clone(), session_id.clone(), file_id.clone());
 
     let file_size = file_dto.size;
-    let expected_sha256 = match v2.verify_checksums {
+    // Shuttle: a continuable file is always verified, because the checksum is
+    // what proves that the parts received at different times belong together.
+    let expected_sha256 = match v2.verify_checksums || resumable {
         true => file_dto.sha256.clone(),
         false => None,
     };
@@ -426,6 +543,8 @@ pub(crate) async fn upload(
         session_id: session_id.clone(),
         file_id: file_id.clone(),
         file: file_dto,
+        offset,
+        resumable,
         target_tx,
     };
     if v2.event_tx.send(event).await.is_err() {
@@ -441,9 +560,14 @@ pub(crate) async fn upload(
     let result = common::save::save_req_to_target(
         req,
         target,
-        file_size,
-        expected_sha256.as_deref(),
-        timestamps,
+        UploadParams {
+            file_size,
+            offset,
+            resumable,
+            expected_sha256,
+            timestamps,
+        },
+        abort,
     )
     .await;
 
@@ -456,6 +580,7 @@ pub(crate) async fn upload(
             StatusCode::UNPROCESSABLE_ENTITY,
             "Checksum mismatch".to_string(),
         )),
+        SaveResult::OffsetMismatch => Err(offset_mismatch_error()),
     }
 }
 
@@ -546,6 +671,29 @@ fn invalid_token_error() -> AppError {
         StatusCode::FORBIDDEN,
         "Invalid token or IP address".to_string(),
     )
+}
+
+/// Shuttle: the upload names an offset this server cannot continue from.
+/// The sender should upload the whole file (offset 0) instead.
+fn offset_mismatch_error() -> AppError {
+    AppError::Message(StatusCode::CONFLICT, "Offset mismatch".to_string())
+}
+
+/// Shuttle: whether a prepare-upload request continues `active`, i.e. comes
+/// from the same sender certificate and names that session in `resume_of`.
+/// Without a certificate on either side there is nothing to bind it to.
+fn is_continuation_of(
+    active: &UploadSessionV2,
+    resume: Option<&ShuttleResumeRequest>,
+    cert_fingerprint: Option<&str>,
+) -> bool {
+    let Some(resume_of) = resume.and_then(|resume| resume.resume_of.as_deref()) else {
+        return false;
+    };
+    let (Some(active_cert), Some(cert)) = (active.sender_cert.as_deref(), cert_fingerprint) else {
+        return false;
+    };
+    resume_of == active.session_id && active_cert == cert
 }
 
 /// Frees a claimed `Pending` session slot unless a session was created.
@@ -668,13 +816,21 @@ async fn finalize_file(v2: &V2State, session_id: &str, file_id: &str, result: Sa
         }
         if let Some(file) = session.files.get_mut(file_id) {
             if file.status == FileStatusV2::InProgress {
+                // Shuttle: after an offset that could not be continued, the
+                // sender uploads the whole file, like after a checksum mismatch.
+                let retry = matches!(
+                    result,
+                    SaveResult::HashMismatch | SaveResult::OffsetMismatch
+                );
                 file.status = match result {
                     SaveResult::Success => FileStatusV2::Finished,
-                    SaveResult::HashMismatch if file.attempts < MAX_UPLOAD_ATTEMPTS => {
-                        FileStatusV2::Pending
-                    }
-                    SaveResult::Failed | SaveResult::HashMismatch => FileStatusV2::Failed,
+                    _ if retry && file.attempts < MAX_UPLOAD_ATTEMPTS => FileStatusV2::Pending,
+                    _ => FileStatusV2::Failed,
                 };
+                // Nothing received so far can be continued.
+                if retry && file.resume_offset.is_some() {
+                    file.resume_offset = Some(0);
+                }
             }
         }
         match session.is_complete() {

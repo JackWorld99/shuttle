@@ -14,6 +14,7 @@ import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/file_transfer_provider.dart';
 import 'package:localsend_app/provider/http_provider.dart';
 import 'package:localsend_app/provider/network/nearby_devices_provider.dart' show isInsecureTrustedDevice;
+import 'package:localsend_app/provider/network/shareme_send_resume.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/provider/send_queue_provider.dart' show QueueSendResult;
 import 'package:localsend_app/provider/sent_history_provider.dart';
@@ -51,6 +52,18 @@ String get needsPinMessage => t.shareme.queue.needsPin;
 ///
 /// In contrast to [serverProvider], this provider does not manage a server.
 /// Instead, it only does HTTP requests to other servers.
+/// Shuttle: how an attempt to continue after a lost connection went.
+enum _ContinueOutcome {
+  /// The receiver took the files: send them.
+  accepted,
+
+  /// Not reachable or busy yet: try again later.
+  retry,
+
+  /// Declined or canceled: give up (the files are marked failed).
+  stop,
+}
+
 final sendProvider = NotifierProvider<SendNotifier, Map<String, SendSessionState>>((ref) {
   return SendNotifier();
 });
@@ -297,21 +310,13 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
       state: (_) => requestState,
     );
 
-    final originDevice = ref.read(deviceFullInfoProvider);
     final requestDto = rust_model.PrepareUploadRequestDto(
-      info: rust_model.RegisterDto(
-        alias: originDevice.alias,
-        version: originDevice.version,
-        deviceModel: originDevice.deviceModel,
-        deviceType: originDevice.deviceType.toRust(),
-        token: originDevice.fingerprint,
-        port: originDevice.port,
-        protocol: originDevice.https ? rust_model.ProtocolType.https : rust_model.ProtocolType.http,
-        hasWebInterface: originDevice.download,
-      ),
+      info: _registerDto(),
       files: {
         for (final entry in requestState.files.entries) entry.key: entry.value.file.toRust(),
       },
+      // Shuttle: interrupted files can be continued (resume). Receivers that don't know it ignore it.
+      shuttleResume: const rust_model.ShuttleResumeRequest(v: 1),
     );
 
     rust_http.PrepareUploadResult? response;
@@ -458,6 +463,7 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
             remoteSessionId: remoteSessionId,
           ),
         );
+        _recordResumeAnswer(sessionId, response.response!, pin: pin);
       } catch (e) {
         state = state.updateSession(
           sessionId: sessionId,
@@ -512,6 +518,8 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
       sessionId: sessionId,
       statuses: {for (final file in sendingFiles.values) file.file.id: file.token != null ? FileStatus.queue : FileStatus.skipped},
     );
+    // Shuttle: files the receiver has a part of start there (resume)
+    _showResumedProgress(sessionId, sendingFiles.values);
 
     // Shuttle: not when the page for this session is already open (it covers this state too; replacing it would cut its animation off)
     if (state[sessionId]?.background == false && !SmSendPage.isOpen(sessionId)) {
@@ -596,10 +604,14 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
       state: (s) => s?.copyWith(startTime: DateTime.now().millisecondsSinceEpoch),
     );
 
-    await _sendFiles(
+    final connectionLost = await _sendFiles(
       sessionId: sessionId,
       files: files.values.toList(),
     );
+    if (connectionLost) {
+      // Shuttle: continue the unfinished files where they stopped (resume)
+      await _continueAfterLostConnection(sessionId);
+    }
 
     _finish(sessionId: sessionId);
   }
@@ -681,10 +693,14 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
       );
     }
 
-    await _sendFiles(
+    final connectionLost = await _sendFiles(
       sessionId: sessionId,
       files: [file],
     );
+    if (connectionLost) {
+      // Shuttle: lost again while retrying: continue where it stopped (resume)
+      await _continueAfterLostConnection(sessionId);
+    }
 
     if (isRetry) {
       if (state[sessionId] != null && ref.read(fileTransferProvider).getStatuses(sessionId).isFinishedOrError) {
@@ -697,15 +713,20 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
   /// The isolate iterates through the list and reports the state of each file
   /// via [HttpUploadEvent]s.
   /// Files without a token (i.e. not selected by the receiver) are skipped.
-  Future<void> _sendFiles({
+  ///
+  /// Shuttle: returns whether the connection was lost while the receiver can continue the files (resume). The
+  /// interrupted files and those not started are then left in the queue, to be continued in a new session.
+  Future<bool> _sendFiles({
     required String sessionId,
     required List<SendingFile> files,
   }) async {
     final sessionState = state[sessionId];
     if (sessionState == null) {
-      return;
+      return false;
     }
 
+    final resume = ref.read(sendResumeProvider).get(sessionId);
+    final resumable = resume != null && resume.supported;
     final uploadFiles = [
       for (final file in files)
         if (file.token != null)
@@ -715,13 +736,15 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
             filePath: file.path,
             fileBytes: file.bytes,
             fileSize: file.file.size,
+            resumeOffset: resume?.offsets[file.file.id],
           ),
     ];
 
     if (uploadFiles.isEmpty) {
-      return;
+      return false;
     }
 
+    var connectionLost = false;
     final taskResult = ref
         .redux(parentIsolateProvider)
         .dispatchTakeResult(
@@ -729,6 +752,7 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
             remoteSessionId: sessionState.remoteSessionId,
             files: uploadFiles,
             device: sessionState.target,
+            stopOnLostConnection: resumable,
           ),
         );
 
@@ -770,6 +794,12 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
                 );
             _updateForegroundServiceProgress(sessionId);
             ref.notifier(fileTransferProvider).setStatus(sessionId: sessionId, fileId: event.fileId, status: FileStatus.finished);
+            if (resumable) ref.notifier(sendResumeProvider).update(sessionId, (r) => r.interrupted.remove(event.fileId));
+          case HttpUploadFileFailedEvent() when event.connectionLost && resumable:
+            // Shuttle: not failed, it continues in a new session (resume)
+            _logger.info('Connection lost while sending ${state[sessionId]?.files[event.fileId]?.file.fileName}: ${event.error}');
+            connectionLost = true;
+            ref.notifier(fileTransferProvider).setStatus(sessionId: sessionId, fileId: event.fileId, status: FileStatus.queue);
           case HttpUploadFileFailedEvent():
             _logger.warning('Error while sending file ${state[sessionId]?.files[event.fileId]?.file.fileName}: ${event.error}');
             ref.notifier(fileTransferProvider).setStatus(sessionId: sessionId, fileId: event.fileId, status: FileStatus.failed);
@@ -811,6 +841,234 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
         ),
       );
     }
+    return connectionLost;
+  }
+
+  /// Shuttle: this device as the sender of a prepare-upload request.
+  rust_model.RegisterDto _registerDto() {
+    final originDevice = ref.read(deviceFullInfoProvider);
+    return rust_model.RegisterDto(
+      alias: originDevice.alias,
+      version: originDevice.version,
+      deviceModel: originDevice.deviceModel,
+      deviceType: originDevice.deviceType.toRust(),
+      token: originDevice.fingerprint,
+      port: originDevice.port,
+      protocol: originDevice.https ? rust_model.ProtocolType.https : rust_model.ProtocolType.http,
+      hasWebInterface: originDevice.download,
+    );
+  }
+
+  /// Shuttle: remembers whether the receiver can continue interrupted files and where each file starts (resume).
+  void _recordResumeAnswer(String sessionId, rust_model.PrepareUploadResponseDto response, {required String? pin}) {
+    final offsets = response.shuttleResume;
+    ref.notifier(sendResumeProvider).update(sessionId, (r) {
+      r.supported = offsets != null;
+      r.offsets = {for (final entry in (offsets ?? const <String, BigInt>{}).entries) entry.key: entry.value.toInt()};
+      r.pin = pin;
+      r.continuedBytes = r.offsets.values.fold(0, (a, b) => a + b);
+    });
+    if (offsets != null && offsets.values.any((o) => o > BigInt.zero)) {
+      _logger.info('The receiver continues files of $sessionId: $offsets');
+    }
+  }
+
+  /// Shuttle: shows the files that continue where an earlier upload stopped at that point, not at 0.
+  void _showResumedProgress(String sessionId, Iterable<SendingFile> files) {
+    final resume = ref.read(sendResumeProvider).get(sessionId);
+    if (resume == null) return;
+    for (final f in files) {
+      final offset = resume.offsets[f.file.id] ?? 0;
+      if (offset > 0 && f.file.size > 0) {
+        ref.notifier(fileTransferProvider).setProgress(sessionId: sessionId, fileId: f.file.id, progress: offset / f.file.size);
+      }
+    }
+  }
+
+  /// Shuttle: the accepted files of [session] that are not done yet (interrupted or not started).
+  List<SendingFile> _unfinishedFiles(SendSessionState session) {
+    final transfers = ref.read(fileTransferProvider);
+    return [
+      for (final f in session.files.values)
+        if (f.token != null &&
+            const {FileStatus.queue, FileStatus.sending}.contains(transfers.getStatus(sessionId: session.sessionId, fileId: f.file.id)))
+          f,
+    ];
+  }
+
+  /// Shuttle: the bytes sent so far (for telling whether an attempt to continue got anywhere).
+  int _sentBytes(String sessionId) {
+    final session = state[sessionId];
+    if (session == null) return 0;
+    final transfers = ref.read(fileTransferProvider);
+    return session.files.values.fold(0, (a, f) => a + (transfers.getProgress(sessionId: sessionId, fileId: f.file.id) * f.file.size).round());
+  }
+
+  void _failFiles(String sessionId, Iterable<SendingFile> files, String? error) {
+    ref.notifier(fileTransferProvider).setStatuses(sessionId: sessionId, statuses: {for (final f in files) f.file.id: FileStatus.failed});
+    if (error != null) {
+      state = state.updateSession(
+        sessionId: sessionId,
+        state: (s) => s?.copyWith(
+          files: {for (final e in s.files.entries) e.key: files.any((f) => f.file.id == e.key) ? e.value.copyWith(errorMessage: error) : e.value},
+        ),
+      );
+    }
+  }
+
+  /// Shuttle: after the connection was lost, continues the unfinished files of [sessionId] in a new session at the
+  /// receiver, which keeps what arrived (resume). Tries a few times ([continueDelays]); a new round starts whenever an
+  /// attempt got further. When the attempts are over, "Continue sending" is offered. Returns when the files are done,
+  /// the attempts are over, or the session was canceled.
+  Future<void> _continueAfterLostConnection(String sessionId, {bool immediate = false}) async {
+    var attempt = 0;
+    var sentBefore = _sentBytes(sessionId);
+    final resumeNotifier = ref.notifier(sendResumeProvider);
+    while (true) {
+      final session = state[sessionId];
+      if (session == null || session.status != SessionStatus.sending) return;
+      final unfinished = _unfinishedFiles(session);
+      if (unfinished.isEmpty) {
+        resumeNotifier.update(sessionId, (r) => r.reconnectAttempt = null);
+        return;
+      }
+      if (attempt >= continueDelays.length) {
+        _logger.info('Could not continue $sessionId in time, offering "Continue sending"');
+        resumeNotifier.update(sessionId, (r) {
+          r.reconnectAttempt = null;
+          r.canContinue = true;
+          r.interrupted.addAll(unfinished.map((f) => f.file.id));
+        });
+        _failFiles(sessionId, unfinished, null);
+        return;
+      }
+
+      resumeNotifier.update(sessionId, (r) => r.reconnectAttempt = attempt + 1);
+      await Future<void>.delayed(immediate && attempt == 0 ? Duration.zero : continueDelays[attempt]);
+      attempt++;
+      if (state[sessionId]?.status != SessionStatus.sending) return; // canceled meanwhile
+
+      final outcome = await _prepareContinuation(sessionId, unfinished);
+      if (outcome == _ContinueOutcome.retry) continue;
+      resumeNotifier.update(sessionId, (r) => r.reconnectAttempt = null);
+      if (outcome == _ContinueOutcome.stop) return;
+
+      final accepted = state[sessionId];
+      if (accepted == null) return;
+      final connectionLost = await _sendFiles(
+        sessionId: sessionId,
+        files: [for (final f in unfinished) accepted.files[f.file.id]!],
+      );
+      if (!connectionLost) return;
+
+      // Lost again: a new round of attempts, as long as this one got further
+      final sentNow = _sentBytes(sessionId);
+      if (sentNow > sentBefore) attempt = 0;
+      sentBefore = sentNow;
+    }
+  }
+
+  /// Shuttle: asks the receiver to continue [files] of [sessionId] in a new session, naming the old one so it can
+  /// take over without asking its user again.
+  Future<_ContinueOutcome> _prepareContinuation(String sessionId, List<SendingFile> files) async {
+    final session = state[sessionId];
+    if (session == null) return _ContinueOutcome.stop;
+    final target = session.target;
+    final pin = ref.read(sendResumeProvider).get(sessionId)?.pin;
+    final requestDto = rust_model.PrepareUploadRequestDto(
+      info: _registerDto(),
+      files: {for (final f in files) f.file.id: f.file.toRust()},
+      shuttleResume: rust_model.ShuttleResumeRequest(v: 1, resumeOf: session.remoteSessionId),
+    );
+
+    final cancelToken = rust_cancel.createCancellationToken();
+    _prepareUploadCancelTokens[sessionId] = cancelToken;
+    final rust_http.PrepareUploadResult result;
+    try {
+      result = await ref
+          .read(httpProvider)
+          .pinnedTo(target.fingerprint)
+          .prepareUpload(
+            protocol: target.getProtocolType(),
+            ip: target.ip!,
+            port: target.port,
+            payload: requestDto,
+            publicKey: null,
+            pin: pin,
+            cancelToken: cancelToken,
+          );
+    } on rust_http.RsHttpClientError_StatusCode catch (e) {
+      _logger.info('Continuing $sessionId: the receiver answered ${e.status}');
+      if (e.status == 409 || e.status >= 500) {
+        // busy (e.g. still with the old session) or a passing error
+        return _ContinueOutcome.retry;
+      }
+      // declined, PIN, too many attempts
+      _failFiles(sessionId, files, e.humanErrorMessage);
+      return _ContinueOutcome.stop;
+    } catch (e) {
+      _logger.info('Continuing $sessionId: not reachable yet ($e)');
+      return _ContinueOutcome.retry;
+    } finally {
+      _prepareUploadCancelTokens.remove(sessionId);
+    }
+
+    final response = result.response;
+    if (state[sessionId] == null) {
+      // canceled while waiting for the answer
+      if (response != null) unawaited(_notifyReceiverCancel(target, response.sessionId));
+      return _ContinueOutcome.stop;
+    }
+    if (response == null) {
+      // 204: the receiver took none of them
+      _failFiles(sessionId, files, null);
+      return _ContinueOutcome.stop;
+    }
+
+    _logger.info('Continuing $sessionId as ${response.sessionId}');
+    _recordResumeAnswer(sessionId, response, pin: pin);
+    state = state.updateSession(
+      sessionId: sessionId,
+      state: (s) => s?.copyWith(
+        remoteSessionId: response.sessionId,
+        files: {
+          for (final e in s.files.entries)
+            e.key: response.files.containsKey(e.key) ? e.value.copyWith(token: response.files[e.key], errorMessage: null) : e.value,
+        },
+      ),
+    );
+    ref
+        .notifier(fileTransferProvider)
+        .setStatuses(
+          sessionId: sessionId,
+          statuses: {for (final f in files) f.file.id: response.files.containsKey(f.file.id) ? FileStatus.queue : FileStatus.failed},
+        );
+    _showResumedProgress(sessionId, files);
+    return _ContinueOutcome.accepted;
+  }
+
+  /// Shuttle: "Continue sending": continues the files interrupted by a lost connection in a new session, where they
+  /// stopped. [target] is the receiver at its current address (it may have changed networks meanwhile).
+  Future<void> continueSession(String sessionId, {Device? target}) async {
+    final session = state[sessionId];
+    final resume = ref.read(sendResumeProvider).get(sessionId);
+    if (session == null || resume == null || !resume.canContinue) return;
+    final ids = {...resume.interrupted};
+    _logger.info('Continuing ${ids.length} files of $sessionId');
+    ref.notifier(sendResumeProvider).update(sessionId, (r) => r.canContinue = false);
+    ref.notifier(fileTransferProvider).setStatuses(sessionId: sessionId, statuses: {for (final id in ids) id: FileStatus.queue});
+    state = state.updateSession(
+      sessionId: sessionId,
+      state: (s) => s?.copyWith(
+        status: SessionStatus.sending,
+        endTime: null,
+        target: target ?? s.target,
+        files: {for (final e in s.files.entries) e.key: ids.contains(e.key) ? e.value.copyWith(errorMessage: null) : e.value},
+      ),
+    );
+    TransferNotification.start(sessionId: sessionId, receiving: false);
+    await _continueAfterLostConnection(sessionId, immediate: true);
+    _finish(sessionId: sessionId);
   }
 
   /// Closes the send-session and sends a cancel event to the receiver.
@@ -894,6 +1152,7 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
       return;
     }
     TransferNotification.stop(sessionId);
+    ref.notifier(sendResumeProvider).remove(sessionId); // Shuttle
     _hashCancelTokens.remove(sessionId)?.cancel();
     _prepareUploadCancelTokens.remove(sessionId)?.cancel();
     if (_tracked.contains(sessionId)) {

@@ -130,6 +130,8 @@ class Translations$shareme$zh_CN extends Translations$shareme$en {
   late final Translations$shareme$settings$zh_CN settings = Translations$shareme$settings$zh_CN.internal(_root);
   @override
   late final Translations$shareme$update$zh_CN update = Translations$shareme$update$zh_CN.internal(_root);
+  @override
+  late final Translations$shareme$resume$zh_CN resume = Translations$shareme$resume$zh_CN.internal(_root);
 }
 
 // Path: general
@@ -2053,6 +2055,29 @@ class Translations$shareme$update$zh_CN extends Translations$shareme$update$en {
   String get downloadFailed => '下载失败，稍后再试';
   @override
   String versionBuild({required Object version, required Object build}) => '${version} (${build})';
+}
+
+// Path: shareme.resume
+class Translations$shareme$resume$zh_CN extends Translations$shareme$resume$en {
+  Translations$shareme$resume$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String sendReconnecting({required Object percent}) => '连接断了，正在重新连接…（已发 ${percent}%）';
+  @override
+  String sendContinuingFrom({required Object percent}) => '从 ${percent}% 接着发';
+  @override
+  String sendNotFinished({required Object percent, required Object size}) => '没发完：已发 ${percent}%（${size}），对方存着这部分';
+  @override
+  String get sendContinue => '继续发送';
+  @override
+  String get receiveSeemsLost => '连接好像断了，等对方接着发…';
+  @override
+  String receiveKept({required Object percent}) => '没收完（已收 ${percent}%）· 对方重新发送时会接着收，3 天内有效';
+  @override
+  String receiveBefore({required Object percent}) => '上次收到 ${percent}%，这次接着收';
 }
 
 // Path: receiveTab.infoBox

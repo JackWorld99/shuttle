@@ -1,6 +1,7 @@
 use flutter_rust_bridge::frb;
 pub use localsend::http::dto::{
     PrepareUploadRequestDto, PrepareUploadResponseDto, RegisterDto, RegisterResponseDto,
+    ShuttleResumeRequest,
 };
 pub use localsend::model::discovery::DeviceType;
 pub use localsend::model::discovery::ProtocolType;
@@ -65,10 +66,19 @@ pub struct _FileMetadata {
 pub struct _PrepareUploadRequestDto {
     pub info: RegisterDto,
     pub files: HashMap<String, FileDto>,
+    pub shuttle_resume: Option<ShuttleResumeRequest>,
 }
 
 #[frb(mirror(PrepareUploadResponseDto))]
 pub struct _PrepareUploadResponseDto {
     pub session_id: String,
     pub files: HashMap<String, String>,
+    pub shuttle_resume: Option<HashMap<String, u64>>,
+}
+
+/// Shuttle's resume extension of prepare-upload, see the core crate.
+#[frb(mirror(ShuttleResumeRequest))]
+pub struct _ShuttleResumeRequest {
+    pub v: u32,
+    pub resume_of: Option<String>,
 }

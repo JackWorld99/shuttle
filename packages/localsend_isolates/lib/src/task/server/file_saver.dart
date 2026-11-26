@@ -14,6 +14,16 @@ final _logger = Logger('FileSaver');
 /// straight into a gallery entry instead of a cache file.
 const _androidGalleryInPlaceSdk = 29;
 
+/// Shuttle: the suffix of a file that is still being received into the
+/// destination directory. It gets its real name only once it is complete
+/// (and its checksum matched), so a half-received file never looks like a
+/// finished one. Like `.crdownload` / `.part` of web browsers.
+const partialFileSuffix = '.shuttle-part';
+
+/// How often renaming a completed file to its real name is tried: right after
+/// writing, a virus scanner may still hold the file open (Windows).
+const _renameAttempts = 5;
+
 /// How a [FileSaveTarget] gets to its final place once it has been written.
 enum FileSaveKind {
   /// Written to the destination directory (a path or an Android SAF document).
@@ -45,12 +55,41 @@ class FileSaveTarget {
 
   final FileSaveKind kind;
 
+  /// Shuttle: the file is written to [path] under a temporary name ending in
+  /// [partialFileSuffix] and renamed once it is complete.
+  final bool partial;
+
   FileSaveTarget({
     required this.path,
     required this.fileDescriptor,
     required this.displayPath,
     this.kind = FileSaveKind.destination,
+    this.partial = false,
   });
+
+  /// Shuttle: whether an interrupted upload into this target can be continued
+  /// later: a partial file in the destination directory, or a pending gallery
+  /// entry (both are hidden from the user's view of finished files). Folders
+  /// picked through SAF and the gallery cache of older systems are not.
+  bool get continuable => (kind == FileSaveKind.destination && path != null && partial) || kind == FileSaveKind.gallery;
+}
+
+/// Shuttle: where the part of a file received before an interrupted upload is
+/// kept: a [path] in the destination directory, or the content [uri] of a
+/// pending gallery entry (Android 10+).
+class PartialFileLocation {
+  final String? path;
+  final String? uri;
+
+  const PartialFileLocation({required this.path, required this.uri});
+
+  /// The location of a [FileSaveTarget.continuable] target.
+  factory PartialFileLocation.of(FileSaveTarget target) {
+    return switch (target.kind) {
+      FileSaveKind.gallery => PartialFileLocation(path: null, uri: target.displayPath),
+      _ => PartialFileLocation(path: target.path, uri: null),
+    };
+  }
 }
 
 /// Prepares the destination for an incoming file with [fileName].
@@ -64,6 +103,10 @@ class FileSaveTarget {
 /// On Android, destinations that cannot be written directly (SAF content URIs
 /// and SD cards) are created via the Storage Access Framework and a writable
 /// file descriptor is returned instead of a path.
+///
+/// Shuttle: a file written to a path in the destination directory gets a
+/// temporary name ending in [partialFileSuffix] until [completeFileSaveTarget]
+/// gives it its real name.
 Future<FileSaveTarget> prepareFileSaveTarget({
   required String destinationDirectory,
   required String cacheDirectory,
@@ -127,11 +170,27 @@ Future<FileSaveTarget> prepareFileSaveTarget({
     }
   }
 
+  // Shuttle: received under a temporary name, see [partialFileSuffix].
+  // The real name is chosen again when the file is complete.
+  final partialPath = await _freePartialPath(destinationPath);
   return FileSaveTarget(
-    path: destinationPath,
+    path: partialPath,
     fileDescriptor: null,
-    displayPath: destinationPath,
+    displayPath: partialPath,
+    partial: true,
   );
+}
+
+/// The first `<destinationPath>.shuttle-part` (numbered if taken) that is free.
+Future<String> _freePartialPath(String destinationPath) async {
+  var counter = 1;
+  while (true) {
+    final candidate = counter == 1 ? '$destinationPath$partialFileSuffix' : '$destinationPath ($counter)$partialFileSuffix';
+    if (await FileSystemEntity.type(candidate, followLinks: false) == FileSystemEntityType.notFound) {
+      return candidate;
+    }
+    counter++;
+  }
 }
 
 /// Prepares [target] for another attempt at the same file, e.g. after the
@@ -139,10 +198,13 @@ Future<FileSaveTarget> prepareFileSaveTarget({
 ///
 /// The destination is kept, so the file is overwritten instead of being
 /// created a second time under a numbered name.
-Future<FileSaveTarget> reopenFileSaveTarget(FileSaveTarget target) async {
+///
+/// Shuttle: with [continuing], the upload continues at an offset, so a
+/// descriptor is opened for reading and writing without truncating.
+Future<FileSaveTarget> reopenFileSaveTarget(FileSaveTarget target, {bool continuing = false}) async {
   final path = target.path;
   if (path != null) {
-    // The server opens (and truncates) the path itself.
+    // The server opens (and truncates, unless continuing) the path itself.
     return target;
   }
 
@@ -151,9 +213,34 @@ Future<FileSaveTarget> reopenFileSaveTarget(FileSaveTarget target) async {
   _logger.info('Reopening ${target.displayPath}');
   return FileSaveTarget(
     path: null,
-    fileDescriptor: await android_channel.openFileForWritingAndroid(uri: target.displayPath),
+    fileDescriptor: continuing
+        ? await android_channel.openFileForContinuingAndroid(uri: target.displayPath)
+        : await android_channel.openFileForWritingAndroid(uri: target.displayPath),
     displayPath: target.displayPath,
     kind: target.kind,
+    partial: target.partial,
+  );
+}
+
+/// Shuttle: the target of a file whose earlier, interrupted upload left the
+/// partial file at [location]; the upload continues where it stopped.
+Future<FileSaveTarget> reopenPartialFile(PartialFileLocation location) async {
+  final path = location.path;
+  if (path != null) {
+    return FileSaveTarget(
+      path: path,
+      fileDescriptor: null,
+      displayPath: path,
+      partial: true,
+    );
+  }
+  final uri = location.uri!;
+  _logger.info('Continuing the gallery entry $uri');
+  return FileSaveTarget(
+    path: null,
+    fileDescriptor: await android_channel.openFileForContinuingAndroid(uri: uri),
+    displayPath: uri,
+    kind: FileSaveKind.gallery,
   );
 }
 
@@ -203,14 +290,46 @@ Future<(bool, String?)> completeFileSaveTarget({
         createdDirectories: createdDirectories,
       );
     case FileSaveKind.destination:
-      final path = target.path;
+      var path = target.path;
+      if (target.partial && path != null) {
+        // Shuttle: the file is complete, now it gets its real name.
+        path = await _renameToFinal(partialPath: path, fileName: fileName, createdDirectories: createdDirectories);
+      }
       if (Platform.isAndroid && path != null) {
         // Scan before reporting success so Android can handle the saved file correctly
         // when it is moved to Trash, allowing another file with the same name.
         // https://github.com/localsend/localsend/issues/2007
         await android_channel.scanFileAndroid(path: path);
       }
-      return (false, target.displayPath);
+      return (false, path ?? target.displayPath);
+  }
+}
+
+/// Shuttle: renames the complete [partialPath] to the real name of [fileName]
+/// in the same directory, numbered if that name is taken by now.
+Future<String> _renameToFinal({
+  required String partialPath,
+  required String fileName,
+  required Set<String> createdDirectories,
+}) async {
+  for (var attempt = 1; ; attempt++) {
+    // The partial file stays where it is (it may be from an earlier session
+    // when the destination directory was a different one).
+    final (finalPath, _, _) = await digestFilePathAndPrepareDirectory(
+      parentDirectory: p.dirname(partialPath),
+      fileName: sanitizeRelativeName(fileName).last,
+      createdDirectories: createdDirectories,
+    );
+    try {
+      await File(partialPath).rename(finalPath);
+      return finalPath;
+    } on FileSystemException catch (e) {
+      if (attempt >= _renameAttempts) {
+        rethrow;
+      }
+      _logger.warning('Could not rename $partialPath to $finalPath (attempt $attempt), trying again', e);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
   }
 }
 
@@ -219,16 +338,37 @@ Future<(bool, String?)> completeFileSaveTarget({
 /// A gallery entry is deleted: it holds only part of the file, and it is
 /// hidden while pending, so it would only take up space. Another attempt at
 /// the same file needs a new target from [prepareFileSaveTarget].
-/// Other targets keep the incomplete file, which another attempt overwrites.
+/// Shuttle: so is a partial file in the destination directory (it would
+/// otherwise stay behind as a broken file).
+/// Other targets (SAF documents) keep the incomplete file, which another
+/// attempt overwrites.
 Future<void> discardFileSaveTarget(FileSaveTarget target) async {
+  if (target.kind == FileSaveKind.destination && target.partial && target.path != null) {
+    await discardPartialFile(PartialFileLocation(path: target.path, uri: null));
+    return;
+  }
   if (target.kind != FileSaveKind.gallery) {
     return;
   }
+  await discardPartialFile(PartialFileLocation(path: null, uri: target.displayPath));
+}
+
+/// Shuttle: deletes the partial file at [location]. Errors are only logged:
+/// a gallery entry left pending is deleted on the next app start.
+Future<void> discardPartialFile(PartialFileLocation location) async {
+  final path = location.path;
+  final uri = location.uri;
   try {
-    await android_channel.deleteMediaStoreFileAndroid(uri: target.displayPath);
+    if (path != null) {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } else if (uri != null) {
+      await android_channel.deleteMediaStoreFileAndroid(uri: uri);
+    }
   } catch (e) {
-    // Left pending; deleted on the next app start.
-    _logger.warning('Could not delete the incomplete gallery entry ${target.displayPath}', e);
+    _logger.warning('Could not delete the incomplete file ${path ?? uri}', e);
   }
 }
 

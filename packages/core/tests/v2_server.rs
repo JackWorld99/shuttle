@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use futures_util::StreamExt;
 use localsend::crypto::hash::sha256_hex;
-use localsend::http::client::{ClientError, LsHttpClient, LsHttpClientV2};
+use localsend::http::client::{ClientError, LsHttpClient, LsHttpClientV2, UploadOptions};
 use localsend::http::dto_v2::{PrepareUploadRequestDtoV2, RegisterDtoV2};
 use localsend::http::server::common::save::FileUploadTarget;
 use localsend::http::server::v2::{PrepareUploadDecisionV2, ServerEventV2, SessionEndReasonV2};
@@ -102,6 +102,7 @@ async fn start_test_server_with_verification(
                                     path: path.clone(),
                                     result_tx,
                                     progress_tx: None,
+                                    saved_tx: None,
                                 });
                                 tokio::spawn(async move {
                                     if let Ok(Ok(())) = result_rx.await {
@@ -188,6 +189,7 @@ fn prepare_upload_request(files: &[FileDto]) -> PrepareUploadRequestDtoV2 {
             .iter()
             .map(|file| (file.id.clone(), file.clone()))
             .collect(),
+        shuttle_resume: None,
     }
 }
 
@@ -835,6 +837,8 @@ async fn test_upload_of_unreadable_file_fails_instead_of_sending_an_empty_body()
             "file-a",
             &response.files["file-a"],
             FileContent::Path(missing),
+            5,
+            UploadOptions::default(),
             |_| {},
             CancellationToken::new(),
         )

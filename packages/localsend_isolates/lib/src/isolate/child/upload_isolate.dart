@@ -31,12 +31,18 @@ class HttpUploadFile {
   final List<int>? fileBytes;
   final int fileSize;
 
+  /// Shuttle: the offset the receiver named for this file in its
+  /// prepare-upload answer (resume extension): the upload continues there.
+  /// `null` when the receiver cannot continue it (e.g. LocalSend).
+  final int? resumeOffset;
+
   HttpUploadFile({
     required this.remoteFileToken,
     required this.fileId,
     required this.filePath,
     required this.fileBytes,
     required this.fileSize,
+    this.resumeOffset,
   });
 }
 
@@ -50,10 +56,16 @@ class HttpUploadFilesTask implements BaseHttpUploadTask {
   final List<HttpUploadFile> files;
   final Device device;
 
+  /// Shuttle: the receiver can continue interrupted uploads, so after a lost
+  /// connection no further file is started: the sender continues all
+  /// unfinished files together in a new session. Those files get no event.
+  final bool stopOnLostConnection;
+
   HttpUploadFilesTask({
     required this.remoteSessionId,
     required this.files,
     required this.device,
+    this.stopOnLostConnection = false,
   });
 }
 
@@ -95,11 +107,20 @@ class HttpUploadFileFinishedEvent extends HttpUploadEvent {
 class HttpUploadFileFailedEvent extends HttpUploadEvent {
   final String error;
 
+  /// Shuttle: the connection was lost (or stalled), rather than the receiver
+  /// rejecting the file: the upload may be continued in a new session.
+  final bool connectionLost;
+
   HttpUploadFileFailedEvent({
     required super.fileId,
     required this.error,
+    this.connectionLost = false,
   });
 }
+
+/// Shuttle: whether [error] of an upload is a transport failure, i.e. the
+/// connection was lost or stalled, as opposed to an answer of the receiver.
+bool isLostConnection(Object error) => error is RsHttpClientError_Reqwest || error is RsHttpClientError_Io;
 
 /// Map of cancel tokens for each task.
 /// Task ID -> CancelToken
@@ -142,10 +163,16 @@ Future<void> setupHttpUploadIsolate(
 
       final cancelToken = createCancellationToken();
       ref.read(_cancelTokenProvider).putIfAbsent(task.id, () => cancelToken);
+      // Shuttle: see [HttpUploadFilesTask.stopOnLostConnection].
+      var connectionLost = false;
       try {
         await Pool(_concurrency).forEach<HttpUploadFile, void>(uploadTask.files, (file) async {
           if (!ref.read(_cancelTokenProvider).containsKey(task.id)) {
             // the task was canceled, do not upload the remaining files
+            return;
+          }
+          if (connectionLost && uploadTask.stopOnLostConnection) {
+            // continued in a new session together with the other unfinished files
             return;
           }
 
@@ -160,6 +187,9 @@ Future<void> setupHttpUploadIsolate(
             final filePath = file.filePath;
             final isContentUri = filePath?.startsWith('content://') ?? false;
 
+            // Shuttle: where this attempt starts; a retry after the receiver
+            // rejected the offset or the checksum uploads the whole file.
+            var offset = file.resumeOffset;
             for (var attempt = 1; ; attempt++) {
               // The file descriptor is consumed by the upload, so a fresh one
               // is needed for every attempt.
@@ -178,6 +208,7 @@ Future<void> setupHttpUploadIsolate(
                       remoteSessionId: uploadTask.remoteSessionId,
                       fileId: file.fileId,
                       token: file.remoteFileToken,
+                      offset: offset,
                       onSendProgress: (progress) {
                         sendToMain(
                           IsolateTaskStreamResult.event(
@@ -193,11 +224,15 @@ Future<void> setupHttpUploadIsolate(
                     );
                 break;
               } on RsHttpClientError_StatusCode catch (e) {
-                if (e.status != 422 || attempt >= _maxUploadAttempts) {
+                // Shuttle: 409 means the receiver cannot continue at the offset
+                // (its partial file is gone); then the whole file is sent.
+                final offsetRejected = e.status == 409 && (offset ?? 0) > 0;
+                if ((e.status != 422 && !offsetRejected) || attempt >= _maxUploadAttempts) {
                   rethrow;
                 }
                 // The receiver discarded the file because its checksum did not
                 // match (e.g. the file changed while being read). Send it again.
+                offset = offset == null ? null : 0;
               }
             }
 
@@ -208,12 +243,17 @@ Future<void> setupHttpUploadIsolate(
               ),
             );
           } catch (e) {
+            final lost = isLostConnection(e);
+            if (lost) {
+              connectionLost = true;
+            }
             sendToMain(
               IsolateTaskStreamResult.event(
                 id: task.id,
                 data: HttpUploadFileFailedEvent(
                   fileId: file.fileId,
                   error: e.humanErrorMessage,
+                  connectionLost: lost,
                 ),
               ),
             );

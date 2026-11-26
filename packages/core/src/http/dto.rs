@@ -1,3 +1,4 @@
+pub use crate::http::dto_v2::ShuttleResumeRequest;
 use crate::http::dto_v2::{
     PrepareUploadRequestDtoV2, PrepareUploadResponseDtoV2, RegisterDtoV2, RegisterResponseDtoV2,
 };
@@ -88,6 +89,10 @@ pub struct RegisterResponseDto {
 pub struct PrepareUploadRequestDto {
     pub info: RegisterDto,
     pub files: HashMap<String, FileDto>,
+
+    /// Shuttle's resume extension, see [ShuttleResumeRequest].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shuttle_resume: Option<ShuttleResumeRequest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +100,11 @@ pub struct PrepareUploadRequestDto {
 pub struct PrepareUploadResponseDto {
     pub session_id: String,
     pub files: HashMap<String, String>,
+
+    /// Shuttle: the offset each continuable file's upload starts at, see
+    /// [PrepareUploadResponseDtoV2::shuttle_resume].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shuttle_resume: Option<HashMap<String, u64>>,
 }
 
 impl From<PrepareUploadRequestDto> for PrepareUploadRequestDtoV2 {
@@ -102,6 +112,7 @@ impl From<PrepareUploadRequestDto> for PrepareUploadRequestDtoV2 {
         PrepareUploadRequestDtoV2 {
             info: v3.info.into(),
             files: v3.files,
+            shuttle_resume: v3.shuttle_resume,
         }
     }
 }
@@ -116,6 +127,7 @@ impl From<PrepareUploadResponseDtoV2> for PrepareUploadResponseDto {
         PrepareUploadResponseDto {
             session_id: v2.session_id,
             files: v2.files,
+            shuttle_resume: v2.shuttle_resume,
         }
     }
 }

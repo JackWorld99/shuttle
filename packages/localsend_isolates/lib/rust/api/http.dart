@@ -62,6 +62,12 @@ abstract class RsHttpClient implements RustOpaqueInterface {
   /// returned: flutter_rust_bridge discards the returned `Result` of
   /// functions taking a [StreamSink], so a returned error would become an
   /// uncaught async error killing the calling isolate.
+  ///
+  /// Shuttle: [offset] continues an interrupted upload (only for a file the
+  /// receiver listed in its prepare-upload answer, with that offset or 0).
+  /// [stall_timeout_ms] fails the upload with a transport error when no file
+  /// content could be sent for that long (the connection went away silently).
+  /// Progress counts from the start of the file.
   Stream<RsUploadEvent> upload({
     required ProtocolType protocol,
     required String ip,
@@ -74,6 +80,8 @@ abstract class RsHttpClient implements RustOpaqueInterface {
     String? path,
     int? fileDescriptor,
     required BigInt contentLength,
+    BigInt? offset,
+    int? stallTimeoutMs,
     required RsCancellationToken cancelToken,
   });
 }

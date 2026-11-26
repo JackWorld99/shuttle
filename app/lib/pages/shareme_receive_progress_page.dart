@@ -16,6 +16,7 @@ import 'package:localsend_app/util/native/open_folder.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/shareme_format.dart';
 import 'package:localsend_app/util/shareme_own_page.dart';
+import 'package:localsend_app/util/shareme_resume.dart';
 import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:localsend_app/widget/shareme/bottom_actions.dart';
 import 'package:localsend_app/widget/shareme/content_stack.dart';
@@ -127,7 +128,8 @@ class _SmReceiveProgressPageState extends State<SmReceiveProgressPage> with Refe
     final session = context.watch(serverProvider)?.session;
     final transfers = context.watch(fileTransferProvider);
 
-    if (session == null || session.sessionId != widget.sessionId) {
+    // Shuttle: a session continued in a new one (the sender lost its connection) stays on this page
+    if (session == null || !ReceiveContinuation.continuesTo(widget.sessionId, session.sessionId)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _leave();
       });
@@ -231,6 +233,9 @@ bool _finished(SessionStatus? status) => status == SessionStatus.finished || sta
 
 // ───────────────────────── Receiving ─────────────────────────
 
+/// Shuttle: after this long without data, the page says the connection seems lost.
+const _seemsLostAfter = Duration(seconds: 30);
+
 class _Receiving extends StatelessWidget {
   final ReceiveSessionState session;
   final bool isMine;
@@ -289,10 +294,18 @@ class _Receiving extends StatelessWidget {
           children: [
             BigPercent(ratio),
             const SizedBox(height: 4),
-            Text(
-              formatPace(left: remaining, speed: liveSpeed),
-              style: ShareMeText.body.copyWith(color: c.ink2, fontSize: 14),
-            ),
+            // Shuttle: nothing arrived for a while: the sender continues where it stopped once it is back (resume)
+            if ((ReceiveContinuation.idleFor(session.sessionId) ?? Duration.zero) > _seemsLostAfter)
+              Text(
+                t.shareme.resume.receiveSeemsLost,
+                style: ShareMeText.body.copyWith(color: c.ink2, fontSize: 14),
+                textAlign: TextAlign.center,
+              )
+            else
+              Text(
+                formatPace(left: remaining, speed: liveSpeed),
+                style: ShareMeText.body.copyWith(color: c.ink2, fontSize: 14),
+              ),
           ],
         ),
         ScenePhase.done => StageText(

@@ -70,36 +70,49 @@ class FileMetadata {
 class PrepareUploadRequestDto {
   final RegisterDto info;
   final Map<String, FileDto> files;
+  final ShuttleResumeRequest? shuttleResume;
 
   const PrepareUploadRequestDto({
     required this.info,
     required this.files,
+    this.shuttleResume,
   });
 
   @override
-  int get hashCode => info.hashCode ^ files.hashCode;
+  int get hashCode => info.hashCode ^ files.hashCode ^ shuttleResume.hashCode;
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || other is PrepareUploadRequestDto && runtimeType == other.runtimeType && info == other.info && files == other.files;
+      identical(this, other) ||
+      other is PrepareUploadRequestDto &&
+          runtimeType == other.runtimeType &&
+          info == other.info &&
+          files == other.files &&
+          shuttleResume == other.shuttleResume;
 }
 
 class PrepareUploadResponseDto {
   final String sessionId;
   final Map<String, String> files;
+  final Map<String, BigInt>? shuttleResume;
 
   const PrepareUploadResponseDto({
     required this.sessionId,
     required this.files,
+    this.shuttleResume,
   });
 
   @override
-  int get hashCode => sessionId.hashCode ^ files.hashCode;
+  int get hashCode => sessionId.hashCode ^ files.hashCode ^ shuttleResume.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is PrepareUploadResponseDto && runtimeType == other.runtimeType && sessionId == other.sessionId && files == other.files;
+      other is PrepareUploadResponseDto &&
+          runtimeType == other.runtimeType &&
+          sessionId == other.sessionId &&
+          files == other.files &&
+          shuttleResume == other.shuttleResume;
 }
 
 enum ProtocolType {
@@ -185,4 +198,22 @@ class RegisterResponseDto {
           deviceType == other.deviceType &&
           token == other.token &&
           hasWebInterface == other.hasWebInterface;
+}
+
+/// Shuttle's resume extension of prepare-upload, see the core crate.
+class ShuttleResumeRequest {
+  final int v;
+  final String? resumeOf;
+
+  const ShuttleResumeRequest({
+    required this.v,
+    this.resumeOf,
+  });
+
+  @override
+  int get hashCode => v.hashCode ^ resumeOf.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is ShuttleResumeRequest && runtimeType == other.runtimeType && v == other.v && resumeOf == other.resumeOf;
 }

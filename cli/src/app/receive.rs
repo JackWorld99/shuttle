@@ -126,6 +126,7 @@ impl App {
                 cert_fingerprint,
                 files,
                 decision_tx,
+                ..
             } => {
                 // The sender is clearly reachable; make sure it has a slot.
                 self.device_confirmed(ip.to_string(), info.clone());
@@ -205,6 +206,7 @@ impl App {
                 file_id,
                 file,
                 target_tx,
+                ..
             } => self.handle_file_upload(session_id, file_id, file, target_tx),
             ServerEventV2::SessionEnd { session_id, reason } => {
                 let Some(session) = self
@@ -301,6 +303,7 @@ impl App {
             path,
             result_tx,
             progress_tx: Some(progress_tx),
+            saved_tx: None,
         });
     }
 
@@ -370,7 +373,9 @@ impl App {
                 }
                 self.ui.log(Category::Receive, &text);
             }
-            SessionEndReasonV2::Cancelled => {
+            // The CLI never offers to continue uploads, so a session is
+            // never replaced by its continuation.
+            SessionEndReasonV2::Cancelled | SessionEndReasonV2::Replaced => {
                 self.ui.log(
                     Category::Receive,
                     &format!(

@@ -6,9 +6,11 @@ import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/pages/receive_page.dart' show ReceivePageVm;
 import 'package:localsend_app/pages/web_share_page.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
+import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/paired_devices_provider.dart';
 import 'package:localsend_app/util/shareme_format.dart';
 import 'package:localsend_app/util/shareme_own_page.dart';
+import 'package:localsend_app/util/shareme_resume.dart';
 import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:localsend_app/widget/shareme/bottom_actions.dart';
 import 'package:localsend_app/widget/shareme/content_stack.dart';
@@ -111,6 +113,15 @@ class _SmReceivePageState extends State<SmReceivePage> {
                             alignment: WrapAlignment.center,
                             fontSize: 16,
                           ),
+                          // Shuttle: part of it arrived in an earlier transfer that was interrupted (resume)
+                          if (_resumedPercent(context, vm, bytes) case final percent?) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              t.shareme.resume.receiveBefore(percent: percent),
+                              style: ShareMeText.meta.copyWith(color: c.ink2),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
                           if (warnings.isNotEmpty) ...[
                             const SizedBox(height: 22),
                             for (final w in warnings)
@@ -203,6 +214,18 @@ class _SmReceivePageState extends State<SmReceivePage> {
 }
 
 /// The sender's avatar with rings running outwards behind it, as long as the request waits for an answer.
+/// Shuttle: how much of this request arrived in an earlier, interrupted transfer, in percent; `null` for nothing.
+int? _resumedPercent(BuildContext context, ReceivePageVm vm, int totalBytes) {
+  final sessionId = context.read(serverProvider)?.session?.sessionId;
+  if (sessionId == null || totalBytes == 0) return null;
+  final store = context.read(resumeStoreProvider);
+  var saved = 0;
+  for (final f in vm.files) {
+    saved += store.savedBefore(sessionId: sessionId, fileId: f.id) ?? 0;
+  }
+  return saved == 0 ? null : (saved * 100 ~/ totalBytes).clamp(1, 99);
+}
+
 class _Arriving extends StatefulWidget {
   final bool waiting;
   final Widget child;

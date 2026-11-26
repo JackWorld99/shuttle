@@ -1200,6 +1200,8 @@ fn wire__crate__api__http__RsHttpClient_upload_impl(
             let api_path = <Option<String>>::sse_decode(&mut deserializer);
             let api_file_descriptor = <Option<i32>>::sse_decode(&mut deserializer);
             let api_content_length = <u64>::sse_decode(&mut deserializer);
+            let api_offset = <Option<u64>>::sse_decode(&mut deserializer);
+            let api_stall_timeout_ms = <Option<u32>>::sse_decode(&mut deserializer);
             let api_cancel_token = <RustOpaqueMoi<
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<RsCancellationToken>,
             >>::sse_decode(&mut deserializer);
@@ -1252,6 +1254,8 @@ fn wire__crate__api__http__RsHttpClient_upload_impl(
                                 api_path,
                                 api_file_descriptor,
                                 api_content_length,
+                                api_offset,
+                                api_stall_timeout_ms,
                                 &*api_cancel_token_guard,
                             )
                             .await;
@@ -1607,10 +1611,10 @@ fn wire__crate__api__server__RsHttpServer_respond_file_upload_impl(
             let api_that = <RustOpaqueMoi<
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<RsHttpServer>,
             >>::sse_decode(&mut deserializer);
-            let api_sink =
-                <StreamSink<f64, flutter_rust_bridge::for_generated::SseCodec>>::sse_decode(
-                    &mut deserializer,
-                );
+            let api_sink = <StreamSink<
+                crate::api::server::RsFileUploadEvent,
+                flutter_rust_bridge::for_generated::SseCodec,
+            >>::sse_decode(&mut deserializer);
             let api_session_id = <String>::sse_decode(&mut deserializer);
             let api_file_id = <String>::sse_decode(&mut deserializer);
             let api_path = <Option<String>>::sse_decode(&mut deserializer);
@@ -1745,6 +1749,8 @@ fn wire__crate__api__server__RsHttpServer_respond_prepare_upload_impl(
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<RsHttpServer>,
             >>::sse_decode(&mut deserializer);
             let api_accepted_file_ids = <Option<Vec<String>>>::sse_decode(&mut deserializer);
+            let api_resume_offsets =
+                <Option<std::collections::HashMap<String, u64>>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
@@ -1769,6 +1775,7 @@ fn wire__crate__api__server__RsHttpServer_respond_prepare_upload_impl(
                         let output_ok = crate::api::server::RsHttpServer::respond_prepare_upload(
                             &*api_that_guard,
                             api_accepted_file_ids,
+                            api_resume_offsets,
                         )
                         .await?;
                         Ok(output_ok)
@@ -3414,11 +3421,15 @@ const _: fn() = || {
         let _: crate::api::model::RegisterDto = PrepareUploadRequestDto.info;
         let _: std::collections::HashMap<String, crate::api::model::FileDto> =
             PrepareUploadRequestDto.files;
+        let _: Option<crate::api::model::ShuttleResumeRequest> =
+            PrepareUploadRequestDto.shuttle_resume;
     }
     {
         let PrepareUploadResponseDto = None::<crate::api::model::PrepareUploadResponseDto>.unwrap();
         let _: String = PrepareUploadResponseDto.session_id;
         let _: std::collections::HashMap<String, String> = PrepareUploadResponseDto.files;
+        let _: Option<std::collections::HashMap<String, u64>> =
+            PrepareUploadResponseDto.shuttle_resume;
     }
     {
         let PrepareUploadResult = None::<crate::api::http::PrepareUploadResult>.unwrap();
@@ -3478,6 +3489,11 @@ const _: fn() = || {
         crate::api::webrtc::RTCStatus::Error(field0) => {
             let _: String = field0;
         }
+    }
+    {
+        let ShuttleResumeRequest = None::<crate::api::model::ShuttleResumeRequest>.unwrap();
+        let _: u32 = ShuttleResumeRequest.v;
+        let _: Option<String> = ShuttleResumeRequest.resume_of;
     }
     {
         let TlsConfig = None::<crate::api::server::TlsConfig>.unwrap();
@@ -3748,6 +3764,14 @@ impl SseDecode for std::collections::HashMap<String, crate::api::model::FileDto>
     }
 }
 
+impl SseDecode for std::collections::HashMap<String, u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <Vec<(String, u64)>>::sse_decode(deserializer);
+        return inner.into_iter().collect();
+    }
+}
+
 impl SseDecode
     for RustOpaqueMoi<
         flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Dart2RustStreamReceiver>,
@@ -3878,7 +3902,7 @@ impl SseDecode for StreamSink<RTCFileReceiver, flutter_rust_bridge::for_generate
     }
 }
 
-impl SseDecode for StreamSink<f64, flutter_rust_bridge::for_generated::SseCodec> {
+impl SseDecode for StreamSink<Vec<u8>, flutter_rust_bridge::for_generated::SseCodec> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <String>::sse_decode(deserializer);
@@ -3886,7 +3910,12 @@ impl SseDecode for StreamSink<f64, flutter_rust_bridge::for_generated::SseCodec>
     }
 }
 
-impl SseDecode for StreamSink<Vec<u8>, flutter_rust_bridge::for_generated::SseCodec> {
+impl SseDecode
+    for StreamSink<
+        crate::api::server::RsFileUploadEvent,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <String>::sse_decode(deserializer);
@@ -4214,6 +4243,18 @@ impl SseDecode for Vec<(String, String)> {
     }
 }
 
+impl SseDecode for Vec<(String, u64)> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<(String, u64)>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::discovery::RsDeviceChannel> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4251,6 +4292,19 @@ impl SseDecode for crate::api::http::LsHttpClientVersion {
             1 => crate::api::http::LsHttpClientVersion::V3,
             _ => unreachable!("Invalid variant for LsHttpClientVersion: {}", inner),
         };
+    }
+}
+
+impl SseDecode for Option<std::collections::HashMap<String, u64>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<std::collections::HashMap<String, u64>>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
     }
 }
 
@@ -4346,6 +4400,19 @@ impl SseDecode for Option<crate::api::model::PrepareUploadResponseDto> {
     }
 }
 
+impl SseDecode for Option<crate::api::model::ShuttleResumeRequest> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::model::ShuttleResumeRequest>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<crate::api::server::TlsConfig> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4362,6 +4429,17 @@ impl SseDecode for Option<u32> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<u32>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<u64>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -4410,9 +4488,12 @@ impl SseDecode for crate::api::model::PrepareUploadRequestDto {
             <std::collections::HashMap<String, crate::api::model::FileDto>>::sse_decode(
                 deserializer,
             );
+        let mut var_shuttleResume =
+            <Option<crate::api::model::ShuttleResumeRequest>>::sse_decode(deserializer);
         return crate::api::model::PrepareUploadRequestDto {
             info: var_info,
             files: var_files,
+            shuttle_resume: var_shuttleResume,
         };
     }
 }
@@ -4422,9 +4503,12 @@ impl SseDecode for crate::api::model::PrepareUploadResponseDto {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_sessionId = <String>::sse_decode(deserializer);
         let mut var_files = <std::collections::HashMap<String, String>>::sse_decode(deserializer);
+        let mut var_shuttleResume =
+            <Option<std::collections::HashMap<String, u64>>>::sse_decode(deserializer);
         return crate::api::model::PrepareUploadResponseDto {
             session_id: var_sessionId,
             files: var_files,
+            shuttle_resume: var_shuttleResume,
         };
     }
 }
@@ -4493,6 +4577,15 @@ impl SseDecode for (String, String) {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_field0 = <String>::sse_decode(deserializer);
         let mut var_field1 = <String>::sse_decode(deserializer);
+        return (var_field0, var_field1);
+    }
+}
+
+impl SseDecode for (String, u64) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_field0 = <String>::sse_decode(deserializer);
+        let mut var_field1 = <u64>::sse_decode(deserializer);
         return (var_field0, var_field1);
     }
 }
@@ -4631,6 +4724,28 @@ impl SseDecode for crate::api::discovery::RsDiscoveredDevice {
     }
 }
 
+impl SseDecode for crate::api::server::RsFileUploadEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_progress = <f64>::sse_decode(deserializer);
+                return crate::api::server::RsFileUploadEvent::Progress {
+                    progress: var_progress,
+                };
+            }
+            1 => {
+                let mut var_bytes = <u64>::sse_decode(deserializer);
+                return crate::api::server::RsFileUploadEvent::Saved { bytes: var_bytes };
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseDecode for crate::api::crypto::RsHashFileEvent {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4709,22 +4824,29 @@ impl SseDecode for crate::api::server::RsServerEvent {
                     <std::collections::HashMap<String, crate::api::model::FileDto>>::sse_decode(
                         deserializer,
                     );
+                let mut var_resume =
+                    <Option<crate::api::model::ShuttleResumeRequest>>::sse_decode(deserializer);
                 return crate::api::server::RsServerEvent::PrepareUpload {
                     session_id: var_sessionId,
                     ip: var_ip,
                     info: var_info,
                     cert_fingerprint: var_certFingerprint,
                     files: var_files,
+                    resume: var_resume,
                 };
             }
             2 => {
                 let mut var_sessionId = <String>::sse_decode(deserializer);
                 let mut var_fileId = <String>::sse_decode(deserializer);
                 let mut var_file = <crate::api::model::FileDto>::sse_decode(deserializer);
+                let mut var_offset = <u64>::sse_decode(deserializer);
+                let mut var_resumable = <bool>::sse_decode(deserializer);
                 return crate::api::server::RsServerEvent::FileUpload {
                     session_id: var_sessionId,
                     file_id: var_fileId,
                     file: var_file,
+                    offset: var_offset,
+                    resumable: var_resumable,
                 };
             }
             3 => {
@@ -4916,7 +5038,20 @@ impl SseDecode for crate::api::server::SessionEndReasonV2 {
         return match inner {
             0 => crate::api::server::SessionEndReasonV2::Finished,
             1 => crate::api::server::SessionEndReasonV2::Cancelled,
+            2 => crate::api::server::SessionEndReasonV2::Replaced,
             _ => unreachable!("Invalid variant for SessionEndReasonV2: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::model::ShuttleResumeRequest {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_v = <u32>::sse_decode(deserializer);
+        let mut var_resumeOf = <Option<String>>::sse_decode(deserializer);
+        return crate::api::model::ShuttleResumeRequest {
+            v: var_v,
+            resume_of: var_resumeOf,
         };
     }
 }
@@ -5800,6 +5935,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::model::PrepareUplo
         [
             self.0.info.into_into_dart().into_dart(),
             self.0.files.into_into_dart().into_dart(),
+            self.0.shuttle_resume.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5821,6 +5957,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::model::PrepareUplo
         [
             self.0.session_id.into_into_dart().into_dart(),
             self.0.files.into_into_dart().into_dart(),
+            self.0.shuttle_resume.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -6074,6 +6211,33 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::discovery::RsDiscoveredDevice
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::server::RsFileUploadEvent {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::server::RsFileUploadEvent::Progress { progress } => {
+                [0.into_dart(), progress.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::server::RsFileUploadEvent::Saved { bytes } => {
+                [1.into_dart(), bytes.into_into_dart().into_dart()].into_dart()
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::server::RsFileUploadEvent
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::server::RsFileUploadEvent>
+    for crate::api::server::RsFileUploadEvent
+{
+    fn into_into_dart(self) -> crate::api::server::RsFileUploadEvent {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::crypto::RsHashFileEvent {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self {
@@ -6155,6 +6319,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::server::RsServerEvent {
                 info,
                 cert_fingerprint,
                 files,
+                resume,
             } => [
                 1.into_dart(),
                 session_id.into_into_dart().into_dart(),
@@ -6162,17 +6327,22 @@ impl flutter_rust_bridge::IntoDart for crate::api::server::RsServerEvent {
                 info.into_into_dart().into_dart(),
                 cert_fingerprint.into_into_dart().into_dart(),
                 files.into_into_dart().into_dart(),
+                resume.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::server::RsServerEvent::FileUpload {
                 session_id,
                 file_id,
                 file,
+                offset,
+                resumable,
             } => [
                 2.into_dart(),
                 session_id.into_into_dart().into_dart(),
                 file_id.into_into_dart().into_dart(),
                 file.into_into_dart().into_dart(),
+                offset.into_into_dart().into_dart(),
+                resumable.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::server::RsServerEvent::SessionEnd { session_id, reason } => [
@@ -6391,6 +6561,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::server::SessionEnd
         match self.0 {
             crate::api::server::SessionEndReasonV2::Finished => 0.into_dart(),
             crate::api::server::SessionEndReasonV2::Cancelled => 1.into_dart(),
+            crate::api::server::SessionEndReasonV2::Replaced => 2.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -6403,6 +6574,27 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::server::SessionEnd
     for crate::api::server::SessionEndReasonV2
 {
     fn into_into_dart(self) -> FrbWrapper<crate::api::server::SessionEndReasonV2> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::model::ShuttleResumeRequest> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.v.into_into_dart().into_dart(),
+            self.0.resume_of.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::model::ShuttleResumeRequest>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::model::ShuttleResumeRequest>>
+    for crate::api::model::ShuttleResumeRequest
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::model::ShuttleResumeRequest> {
         self.into()
     }
 }
@@ -6715,6 +6907,13 @@ impl SseEncode for std::collections::HashMap<String, crate::api::model::FileDto>
     }
 }
 
+impl SseEncode for std::collections::HashMap<String, u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<(String, u64)>>::sse_encode(self.into_iter().collect(), serializer);
+    }
+}
+
 impl SseEncode
     for RustOpaqueMoi<
         flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Dart2RustStreamReceiver>,
@@ -6854,14 +7053,19 @@ impl SseEncode for StreamSink<RTCFileReceiver, flutter_rust_bridge::for_generate
     }
 }
 
-impl SseEncode for StreamSink<f64, flutter_rust_bridge::for_generated::SseCodec> {
+impl SseEncode for StreamSink<Vec<u8>, flutter_rust_bridge::for_generated::SseCodec> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         unimplemented!("")
     }
 }
 
-impl SseEncode for StreamSink<Vec<u8>, flutter_rust_bridge::for_generated::SseCodec> {
+impl SseEncode
+    for StreamSink<
+        crate::api::server::RsFileUploadEvent,
+        flutter_rust_bridge::for_generated::SseCodec,
+    >
+{
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         unimplemented!("")
@@ -7140,6 +7344,16 @@ impl SseEncode for Vec<(String, String)> {
     }
 }
 
+impl SseEncode for Vec<(String, u64)> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <(String, u64)>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::discovery::RsDeviceChannel> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -7173,6 +7387,16 @@ impl SseEncode for crate::api::http::LsHttpClientVersion {
             },
             serializer,
         );
+    }
+}
+
+impl SseEncode for Option<std::collections::HashMap<String, u64>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <std::collections::HashMap<String, u64>>::sse_encode(value, serializer);
+        }
     }
 }
 
@@ -7256,6 +7480,16 @@ impl SseEncode for Option<crate::api::model::PrepareUploadResponseDto> {
     }
 }
 
+impl SseEncode for Option<crate::api::model::ShuttleResumeRequest> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::model::ShuttleResumeRequest>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<crate::api::server::TlsConfig> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -7272,6 +7506,16 @@ impl SseEncode for Option<u32> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <u32>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <u64>::sse_encode(value, serializer);
         }
     }
 }
@@ -7311,6 +7555,10 @@ impl SseEncode for crate::api::model::PrepareUploadRequestDto {
         <std::collections::HashMap<String, crate::api::model::FileDto>>::sse_encode(
             self.files, serializer,
         );
+        <Option<crate::api::model::ShuttleResumeRequest>>::sse_encode(
+            self.shuttle_resume,
+            serializer,
+        );
     }
 }
 
@@ -7319,6 +7567,10 @@ impl SseEncode for crate::api::model::PrepareUploadResponseDto {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.session_id, serializer);
         <std::collections::HashMap<String, String>>::sse_encode(self.files, serializer);
+        <Option<std::collections::HashMap<String, u64>>>::sse_encode(
+            self.shuttle_resume,
+            serializer,
+        );
     }
 }
 
@@ -7380,6 +7632,14 @@ impl SseEncode for (String, String) {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.0, serializer);
         <String>::sse_encode(self.1, serializer);
+    }
+}
+
+impl SseEncode for (String, u64) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.0, serializer);
+        <u64>::sse_encode(self.1, serializer);
     }
 }
 
@@ -7464,6 +7724,25 @@ impl SseEncode for crate::api::discovery::RsDiscoveredDevice {
     }
 }
 
+impl SseEncode for crate::api::server::RsFileUploadEvent {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::server::RsFileUploadEvent::Progress { progress } => {
+                <i32>::sse_encode(0, serializer);
+                <f64>::sse_encode(progress, serializer);
+            }
+            crate::api::server::RsFileUploadEvent::Saved { bytes } => {
+                <i32>::sse_encode(1, serializer);
+                <u64>::sse_encode(bytes, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseEncode for crate::api::crypto::RsHashFileEvent {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -7530,6 +7809,7 @@ impl SseEncode for crate::api::server::RsServerEvent {
                 info,
                 cert_fingerprint,
                 files,
+                resume,
             } => {
                 <i32>::sse_encode(1, serializer);
                 <String>::sse_encode(session_id, serializer);
@@ -7539,16 +7819,21 @@ impl SseEncode for crate::api::server::RsServerEvent {
                 <std::collections::HashMap<String, crate::api::model::FileDto>>::sse_encode(
                     files, serializer,
                 );
+                <Option<crate::api::model::ShuttleResumeRequest>>::sse_encode(resume, serializer);
             }
             crate::api::server::RsServerEvent::FileUpload {
                 session_id,
                 file_id,
                 file,
+                offset,
+                resumable,
             } => {
                 <i32>::sse_encode(2, serializer);
                 <String>::sse_encode(session_id, serializer);
                 <String>::sse_encode(file_id, serializer);
                 <crate::api::model::FileDto>::sse_encode(file, serializer);
+                <u64>::sse_encode(offset, serializer);
+                <bool>::sse_encode(resumable, serializer);
             }
             crate::api::server::RsServerEvent::SessionEnd { session_id, reason } => {
                 <i32>::sse_encode(3, serializer);
@@ -7701,12 +7986,21 @@ impl SseEncode for crate::api::server::SessionEndReasonV2 {
             match self {
                 crate::api::server::SessionEndReasonV2::Finished => 0,
                 crate::api::server::SessionEndReasonV2::Cancelled => 1,
+                crate::api::server::SessionEndReasonV2::Replaced => 2,
                 _ => {
                     unimplemented!("");
                 }
             },
             serializer,
         );
+    }
+}
+
+impl SseEncode for crate::api::model::ShuttleResumeRequest {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u32>::sse_encode(self.v, serializer);
+        <Option<String>>::sse_encode(self.resume_of, serializer);
     }
 }
 

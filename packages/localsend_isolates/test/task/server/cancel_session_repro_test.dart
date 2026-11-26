@@ -117,8 +117,8 @@ void main() {
                   fileDescriptor: null,
                   fileSize: file.size,
                 );
-                await for (final progress in progressStream) {
-                  if (progress > 0.2) {
+                await for (final event in progressStream) {
+                  if (event case RsFileUploadEvent_Progress(:final progress) when progress > 0.2) {
                     // Receiver-side cancel mid-transfer (HttpServerCancelSessionTask).
                     triggerReceiverCancel(sessionId);
                   }

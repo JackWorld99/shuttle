@@ -235,10 +235,14 @@ class IsolateHttpUploadFilesAction extends ReduxActionWithResult<IsolateControll
   final List<HttpUploadFile> files;
   final Device device;
 
+  /// Shuttle: see [HttpUploadFilesTask.stopOnLostConnection].
+  final bool stopOnLostConnection;
+
   IsolateHttpUploadFilesAction({
     required this.remoteSessionId,
     required this.files,
     required this.device,
+    this.stopOnLostConnection = false,
   });
 
   @override
@@ -253,6 +257,7 @@ class IsolateHttpUploadFilesAction extends ReduxActionWithResult<IsolateControll
         remoteSessionId: remoteSessionId,
         files: files,
         device: device,
+        stopOnLostConnection: stopOnLostConnection,
       ),
       taskId: taskId,
     );

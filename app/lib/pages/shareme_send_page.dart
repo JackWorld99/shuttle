@@ -14,6 +14,7 @@ import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/file_transfer_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/provider/network/send_queue_runner.dart';
+import 'package:localsend_app/provider/network/shareme_send_resume.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/provider/send_queue_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
@@ -295,6 +296,13 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
     await notifier.startSession(target: target, files: files, background: false);
   }
 
+  /// Shuttle: "Continue sending" after a lost connection: the interrupted files continue where they stopped, at the
+  /// receiver's current address.
+  Future<void> _continue(SendSessionState session) async {
+    final target = ref.read(sendTabVmProvider).nearbyDevices.firstWhereOrNull((d) => d.fingerprint == session.target.fingerprint);
+    await ref.notifier(sendProvider).continueSession(session.sessionId, target: target);
+  }
+
   Future<void> _retryFailed(SendSessionState session, FileTransferNotifier transfers) async {
     final failed = session.files.values.where(
       (f) => f.token != null && transfers.getStatus(sessionId: session.sessionId, fileId: f.file.id) == FileStatus.failed,
@@ -308,6 +316,7 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
   Widget build(BuildContext context) {
     final session = context.watch(sendProvider)[widget.sessionId];
     final transfers = context.watch(fileTransferProvider);
+    final resume = context.watch(sendResumeProvider).get(widget.sessionId); // Shuttle
 
     if (session == null) {
       // The session is gone (e.g. removed automatically after a successful background send).
@@ -378,6 +387,8 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
                     onDone: _finish,
                     onRetryAll: () async => _retryAll(session),
                     onRetryFailed: () async => _retryFailed(session, transfers),
+                    resume: resume,
+                    onContinue: () async => _continue(session),
                   ),
                 ),
               ),
@@ -452,6 +463,10 @@ class _Stage extends StatelessWidget {
   final VoidCallback onRetryAll;
   final VoidCallback onRetryFailed;
 
+  /// Shuttle: continuing interrupted files (resume)
+  final SendResume? resume;
+  final VoidCallback onContinue;
+
   const _Stage({
     required this.session,
     required this.isMine,
@@ -465,6 +480,8 @@ class _Stage extends StatelessWidget {
     required this.onDone,
     required this.onRetryAll,
     required this.onRetryFailed,
+    required this.resume,
+    required this.onContinue,
   });
 
   @override
@@ -506,12 +523,15 @@ class _Stage extends StatelessWidget {
         ScenePhase.done => _doneText(context),
         ScenePhase.broken =>
           failed.isNotEmpty
-              ? _failedText(context, failed)
+              ? _failedText(context, failed, totals, ratio)
               : _StoppedText(key: ValueKey('stopped-$queued'), session: session, queued: queued, fromQueue: fromQueue),
       },
       bottom: _bottom(context, phase, failed.isNotEmpty),
     );
   }
+
+  /// Shuttle: the percentage shown in the resume texts (never 0 or 100 for a transfer that is neither).
+  static int _percent(double ratio) => (ratio * 100).floor().clamp(0, 99);
 
   static List<FilmFrame> _frames(SendSessionState s) => [
     for (final f in s.files.values)
@@ -559,15 +579,41 @@ class _Stage extends StatelessWidget {
     final average = elapsedMs > 500 ? totals.current / (elapsedMs / 1000) : 0.0;
     final speed = liveSpeed > 0 ? liveSpeed : average;
     final remaining = speed > 0 ? Duration(seconds: ((totals.total - totals.current) / speed).round()) : null;
+    // Shuttle: the connection was lost and the transfer continues by itself (resume)
+    final reconnecting = resume?.reconnectAttempt != null;
+    final continuedBytes = resume?.continuedBytes ?? 0;
     return Column(
       key: const ValueKey('moving'),
       children: [
         BigPercent(ratio),
         const SizedBox(height: 4),
-        Text(
-          formatPace(left: remaining, speed: speed),
-          style: ShareMeText.body.copyWith(color: c.ink2, fontSize: 14),
-        ),
+        if (reconnecting)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2, color: c.ink2)),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  t.shareme.resume.sendReconnecting(percent: _percent(ratio)),
+                  style: ShareMeText.body.copyWith(color: c.ink2, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          )
+        else
+          Text(
+            formatPace(left: remaining, speed: speed),
+            style: ShareMeText.body.copyWith(color: c.ink2, fontSize: 14),
+          ),
+        if (!reconnecting && continuedBytes > 0 && totals.total > 0) ...[
+          const SizedBox(height: 4),
+          Text(
+            t.shareme.resume.sendContinuingFrom(percent: _percent(continuedBytes / totals.total)),
+            style: ShareMeText.meta.copyWith(color: c.ink2),
+          ),
+        ],
         ..._notEncrypted(),
       ],
     );
@@ -592,14 +638,18 @@ class _Stage extends StatelessWidget {
     ],
   );
 
-  Widget _failedText(BuildContext context, List<SendingFile> failed) {
+  Widget _failedText(BuildContext context, List<SendingFile> failed, _Totals totals, double ratio) {
     final c = context.sm;
+    // Shuttle: interrupted by a lost connection, the receiver keeps what arrived (resume)
+    final canContinue = resume?.canContinue == true;
     return Column(
       key: const ValueKey('failed'),
       children: [
         Text(
-          t.shareme.send.failedTitle(n: failed.length),
-          style: ShareMeText.display.copyWith(color: c.warn, fontSize: 24),
+          canContinue
+              ? t.shareme.resume.sendNotFinished(percent: _percent(ratio), size: formatSize(totals.current))
+              : t.shareme.send.failedTitle(n: failed.length),
+          style: ShareMeText.display.copyWith(color: c.warn, fontSize: canContinue ? 20 : 24),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 18),
@@ -677,6 +727,16 @@ class _Stage extends StatelessWidget {
           width: double.infinity,
           child: FilledButton(onPressed: onDone, child: Text(t.shareme.send.back)),
         ),
+      );
+    }
+    if (someFailed && resume?.canContinue == true) {
+      // Shuttle: continues where it stopped (resume)
+      return BottomActions(
+        key: const ValueKey('continue'),
+        secondaryLabel: t.shareme.send.done,
+        onSecondary: onDone,
+        primaryLabel: t.shareme.resume.sendContinue,
+        onPrimary: onContinue,
       );
     }
     if (someFailed) {

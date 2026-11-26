@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:localsend_isolates/constants.dart';
 import 'package:localsend_isolates/model/dto/multicast_dto.dart';
 import 'package:localsend_isolates/model/file_type.dart';
-import 'package:localsend_isolates/rust/api/model.dart' show FileDto;
+import 'package:localsend_isolates/rust/api/model.dart' show FileDto, ShuttleResumeRequest;
 import 'package:localsend_isolates/rust/api/server.dart';
 import 'package:localsend_isolates/src/isolate/child/main.dart';
 import 'package:localsend_isolates/src/isolate/child/sync_provider.dart';
@@ -78,6 +78,16 @@ class HttpServerReceiveConfig {
   /// for destinations that cannot be written directly.
   final int? androidSdkInt;
 
+  /// Shuttle: the accepted files whose upload can be continued if it is
+  /// interrupted, mapped to the offset their upload starts at (the bytes
+  /// already received in an earlier upload, or 0). `null` when the sender did
+  /// not ask for it.
+  final Map<String, int>? resumeOffsets;
+
+  /// Shuttle: where the part received earlier is kept, for the files of
+  /// [resumeOffsets] whose offset is above 0.
+  final Map<String, PartialFileLocation> partialFiles;
+
   HttpServerReceiveConfig({
     required this.sessionId,
     required this.fileNameMap,
@@ -85,6 +95,8 @@ class HttpServerReceiveConfig {
     required this.cacheDirectory,
     required this.saveToGallery,
     required this.androidSdkInt,
+    this.resumeOffsets,
+    this.partialFiles = const {},
   });
 }
 
@@ -202,12 +214,19 @@ class HttpServerPrepareUploadEvent extends HttpServerEvent {
 
   final Map<String, FileDto> files;
 
+  /// Shuttle's resume extension, when the sender asked for it (only with a
+  /// client certificate, i.e. [certFingerprint] is set). When
+  /// [ShuttleResumeRequest.resumeOf] names the session that was active until
+  /// now, that session was replaced by this request.
+  final ShuttleResumeRequest? resume;
+
   HttpServerPrepareUploadEvent({
     required this.sessionId,
     required this.ip,
     required this.info,
     required this.certFingerprint,
     required this.files,
+    this.resume,
   });
 }
 
@@ -219,10 +238,36 @@ class HttpServerFileUploadEvent extends HttpServerEvent {
   final String fileId;
   final FileDto file;
 
+  /// Shuttle: the upload continues at this offset (bytes received earlier).
+  final int offset;
+
+  /// Shuttle: the upload can be continued later if it is interrupted.
+  final bool resumable;
+
   HttpServerFileUploadEvent({
     required this.sessionId,
     required this.fileId,
     required this.file,
+    this.offset = 0,
+    this.resumable = false,
+  });
+}
+
+/// Shuttle: the part of a continuable upload that is safely saved: [saved]
+/// bytes at [location]. Sent when the upload starts (with the offset it
+/// continues at) and whenever more of it is saved, so the part survives a
+/// crash of the app.
+class HttpServerFilePartialEvent extends HttpServerEvent {
+  final String sessionId;
+  final String fileId;
+  final PartialFileLocation location;
+  final int saved;
+
+  HttpServerFilePartialEvent({
+    required this.sessionId,
+    required this.fileId,
+    required this.location,
+    required this.saved,
   });
 }
 
@@ -254,12 +299,18 @@ class HttpServerFileUploadResultEvent extends HttpServerEvent {
   /// `null` if the file has been saved successfully.
   final String? error;
 
+  /// Shuttle: set when the upload failed and the part received so far (this
+  /// many bytes) is kept, so a later upload of the file can continue it.
+  /// Its location was announced by [HttpServerFilePartialEvent].
+  final int? partialSaved;
+
   HttpServerFileUploadResultEvent({
     required this.sessionId,
     required this.fileId,
     required this.path,
     required this.savedToGallery,
     required this.error,
+    this.partialSaved,
   });
 }
 
@@ -368,6 +419,10 @@ class _ReceiveSession {
   /// of being saved next to it under a numbered name.
   final Map<String, FileSaveTarget> targets = {};
 
+  /// Shuttle: the session was canceled (by either side), so the part of an
+  /// interrupted file is not kept for a later continuation.
+  bool cancelled = false;
+
   _ReceiveSession(this.config);
 }
 
@@ -455,7 +510,7 @@ Future<void> setupHttpServerIsolate(
               switch (event) {
                 case RsServerEvent_Register(:final ip, :final info):
                   emit(HttpServerRegisterEvent(ip: ip, info: info));
-                case RsServerEvent_PrepareUpload(:final sessionId, :final ip, :final info, :final certFingerprint, :final files):
+                case RsServerEvent_PrepareUpload(:final sessionId, :final ip, :final info, :final certFingerprint, :final files, :final resume):
                   // The Rust server is the authority on the single-session
                   // invariant: a new request means the old session is over.
                   holder.session = null;
@@ -466,9 +521,10 @@ Future<void> setupHttpServerIsolate(
                       info: info,
                       certFingerprint: certFingerprint,
                       files: files,
+                      resume: resume,
                     ),
                   );
-                case RsServerEvent_FileUpload(:final sessionId, :final fileId, :final file):
+                case RsServerEvent_FileUpload(:final sessionId, :final fileId, :final file, :final offset, :final resumable):
                   final session = holder.session;
                   if (session == null || session.config.sessionId != sessionId || !session.config.fileNameMap.containsKey(fileId)) {
                     _logger.warning('Rejecting upload of file $fileId: no matching active session');
@@ -490,6 +546,8 @@ Future<void> setupHttpServerIsolate(
                         sessionId: sessionId,
                         fileId: fileId,
                         file: file,
+                        offset: offset.toInt(),
+                        resumable: resumable,
                       ),
                     );
 
@@ -499,11 +557,18 @@ Future<void> setupHttpServerIsolate(
                       sessionId: sessionId,
                       fileId: fileId,
                       file: file,
+                      offset: offset.toInt(),
+                      resumable: resumable,
                       emit: emit,
                     );
                   });
                 case RsServerEvent_SessionEnd(:final sessionId, :final reason):
                   if (holder.session?.config.sessionId == sessionId) {
+                    // Shuttle: a sender's cancel discards what it sent; a session
+                    // replaced by its continuation keeps it.
+                    if (reason == SessionEndReasonV2.cancelled) {
+                      holder.session!.cancelled = true;
+                    }
                     holder.session = null;
                   }
                   emit(
@@ -571,11 +636,17 @@ Future<void> setupHttpServerIsolate(
           // An empty fileNameMap accepts nothing: the Rust server responds
           // with 204 and creates no session.
           ref.read(_receiveSessionProvider).session = config == null || config.fileNameMap.isEmpty ? null : _ReceiveSession(config);
-          await ref.read(httpServerProvider).respondPrepareUpload(acceptedFileIds: config?.fileNameMap.keys.toList());
+          await ref
+              .read(httpServerProvider)
+              .respondPrepareUpload(
+                acceptedFileIds: config?.fileNameMap.keys.toList(),
+                resumeOffsets: config?.resumeOffsets,
+              );
           return;
         case HttpServerCancelSessionTask cancelTask:
           final holder = ref.read(_receiveSessionProvider);
           if (holder.session?.config.sessionId == cancelTask.sessionId) {
+            holder.session!.cancelled = true; // Shuttle: discard what was received
             holder.session = null;
           }
           await ref.read(httpServerProvider).cancelSession(sessionId: cancelTask.sessionId);
@@ -617,12 +688,19 @@ Future<void> setupHttpServerIsolate(
 ///
 /// [emit]s [HttpServerFileUploadProgressEvent]s while the file is being
 /// received, followed by a final [HttpServerFileUploadResultEvent].
+///
+/// Shuttle: an upload that continues at [offset] writes into the partial file
+/// of the earlier upload. A [resumable] upload into a target that can be
+/// continued reports its saved part ([HttpServerFilePartialEvent]) and keeps
+/// it when it is interrupted.
 Future<void> _handleFileUpload({
   required Ref ref,
   required _ReceiveSession session,
   required String sessionId,
   required String fileId,
   required FileDto file,
+  required int offset,
+  required bool resumable,
   required void Function(HttpServerEvent event) emit,
 }) async {
   final config = session.config;
@@ -631,7 +709,7 @@ Future<void> _handleFileUpload({
   final isImage = dartFile.fileType == FileType.image;
   final shouldSaveToGallery = config.saveToGallery && (isImage || dartFile.fileType == FileType.video);
 
-  void emitFailed(Object e) {
+  void emitFailed(Object e, {int? partialSaved}) {
     emit(
       HttpServerFileUploadResultEvent(
         sessionId: sessionId,
@@ -639,6 +717,7 @@ Future<void> _handleFileUpload({
         path: null,
         savedToGallery: false,
         error: e.humanErrorMessage,
+        partialSaved: partialSaved,
       ),
     );
   }
@@ -650,17 +729,25 @@ Future<void> _handleFileUpload({
     // A previous attempt at this file already picked a destination, which this
     // attempt overwrites instead of creating a numbered version.
     final previous = session.targets[fileId];
-    target = previous != null
-        ? await reopenFileSaveTarget(previous)
-        : await prepareFileSaveTarget(
-            destinationDirectory: config.destinationDirectory,
-            cacheDirectory: config.cacheDirectory,
-            fileName: desiredName,
-            saveToGallery: shouldSaveToGallery,
-            isImage: isImage,
-            createdDirectories: session.createdDirectories,
-            androidSdkInt: config.androidSdkInt,
-          );
+    // Shuttle: the part an earlier, interrupted upload left behind.
+    final partial = config.partialFiles[fileId];
+    if (previous != null) {
+      target = await reopenFileSaveTarget(previous, continuing: offset > 0);
+    } else if (offset > 0 && partial != null) {
+      target = await reopenPartialFile(partial);
+    } else {
+      // Also for an offset without a known partial file: the Rust server then
+      // finds the file too short and the sender uploads the whole file.
+      target = await prepareFileSaveTarget(
+        destinationDirectory: config.destinationDirectory,
+        cacheDirectory: config.cacheDirectory,
+        fileName: desiredName,
+        saveToGallery: shouldSaveToGallery,
+        isImage: isImage,
+        createdDirectories: session.createdDirectories,
+        androidSdkInt: config.androidSdkInt,
+      );
+    }
     session.targets[fileId] = target;
   } catch (e, st) {
     _logger.severe('Failed to prepare save target', e, st);
@@ -677,9 +764,20 @@ Future<void> _handleFileUpload({
     return;
   }
 
+  // Shuttle: the part of a continuable upload is announced right away, so a
+  // crash of the app does not leave it behind unknown.
+  final continuable = resumable && target.continuable;
+  final location = PartialFileLocation.of(target);
+  if (continuable) {
+    emit(HttpServerFilePartialEvent(sessionId: sessionId, fileId: fileId, location: location, saved: offset));
+  }
+
+  // Shuttle: what the Rust server reported as safely saved; nothing until it
+  // accepted the target (e.g. a partial file that turned out too short).
+  var saved = 0;
   try {
     // The Rust server writes the file and reports the progress.
-    final progressStream = ref
+    final events = ref
         .read(httpServerProvider)
         .respondFileUpload(
           sessionId: sessionId,
@@ -688,22 +786,39 @@ Future<void> _handleFileUpload({
           fileDescriptor: target.fileDescriptor,
           fileSize: dartFile.size,
         );
-    await for (final progress in progressStream) {
-      emit(
-        HttpServerFileUploadProgressEvent(
-          sessionId: sessionId,
-          fileId: fileId,
-          progress: progress,
-        ),
-      );
+    await for (final event in events) {
+      switch (event) {
+        case RsFileUploadEvent_Progress(:final progress):
+          emit(
+            HttpServerFileUploadProgressEvent(
+              sessionId: sessionId,
+              fileId: fileId,
+              progress: progress,
+            ),
+          );
+        case RsFileUploadEvent_Saved(:final bytes):
+          saved = bytes.toInt();
+          if (continuable) {
+            emit(HttpServerFilePartialEvent(sessionId: sessionId, fileId: fileId, location: location, saved: saved));
+          }
+      }
     }
   } catch (e, st) {
-    // The incomplete file is kept: a retry of this file overwrites it, and
-    // otherwise it stays behind as the partial file of a failed transfer.
-    // An incomplete gallery entry is deleted instead (see discardFileSaveTarget),
-    // so a retry starts with a new one.
     _logger.severe('Failed to save file', e, st);
-    if (target.kind == FileSaveKind.gallery) {
+
+    // Shuttle: the part of an interrupted upload stays for a later
+    // continuation, unless the transfer was canceled.
+    final keep = continuable && !session.cancelled && saved > 0;
+    if (keep) {
+      _logger.info('Keeping $saved bytes of ${dartFile.fileName} to continue later');
+      emitFailed(e, partialSaved: saved);
+      return;
+    }
+
+    // An incomplete gallery entry (Shuttle: or partial file) is deleted, so a
+    // retry starts with a new one (see discardFileSaveTarget). Otherwise the
+    // incomplete file is kept: a retry of this file overwrites it.
+    if (target.kind == FileSaveKind.gallery || target.partial) {
       session.targets.remove(fileId);
       await discardFileSaveTarget(target);
     }

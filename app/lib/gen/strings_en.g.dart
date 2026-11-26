@@ -95,6 +95,7 @@ class Translations$shareme$en {
   late final Translations$shareme$pair$en pair = Translations$shareme$pair$en.internal(_root);
   late final Translations$shareme$settings$en settings = Translations$shareme$settings$en.internal(_root);
   late final Translations$shareme$update$en update = Translations$shareme$update$en.internal(_root);
+  late final Translations$shareme$resume$en resume = Translations$shareme$resume$en.internal(_root);
 }
 
 // Path: general
@@ -2685,6 +2686,36 @@ class Translations$shareme$update$en {
 
   /// en: '{version} ({build})'
   String versionBuild({required Object version, required Object build}) => '${version} (${build})';
+}
+
+// Path: shareme.resume
+class Translations$shareme$resume$en {
+  Translations$shareme$resume$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Connection lost, reconnecting… ({percent}% sent)'
+  String sendReconnecting({required Object percent}) => 'Connection lost, reconnecting… (${percent}% sent)';
+
+  /// en: 'Continuing from {percent}%'
+  String sendContinuingFrom({required Object percent}) => 'Continuing from ${percent}%';
+
+  /// en: 'Not finished: {percent}% sent ({size}), kept on the other device'
+  String sendNotFinished({required Object percent, required Object size}) => 'Not finished: ${percent}% sent (${size}), kept on the other device';
+
+  /// en: 'Continue sending'
+  String get sendContinue => 'Continue sending';
+
+  /// en: 'The connection seems lost. Waiting for the sender to continue…'
+  String get receiveSeemsLost => 'The connection seems lost. Waiting for the sender to continue…';
+
+  /// en: 'Not finished ({percent}% received). Continues if it is sent again within 3 days'
+  String receiveKept({required Object percent}) => 'Not finished (${percent}% received). Continues if it is sent again within 3 days';
+
+  /// en: '{percent}% received last time, continues from there'
+  String receiveBefore({required Object percent}) => '${percent}% received last time, continues from there';
 }
 
 // Path: receiveTab.infoBox

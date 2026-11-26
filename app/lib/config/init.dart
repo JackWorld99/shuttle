@@ -37,6 +37,7 @@ import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
 import 'package:localsend_app/util/notification_strings.dart';
 import 'package:localsend_app/util/shareme_diagnostics.dart';
+import 'package:localsend_app/util/shareme_resume.dart';
 import 'package:localsend_app/util/ui/dynamic_colors.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/dialogs/local_network_dialog.dart';
@@ -330,17 +331,35 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
     ref.global.dispatchAsync(ClearCacheAction()); // ignore: unawaited_futures
   }
 
+  if (appStart) {
+    // Shuttle: parts of interrupted files that nobody continued in time are deleted (resume), now and every few hours.
+    final resumeStore = ref.read(resumeStoreProvider);
+    Future<void> cleanExpired() => resumeStore.cleanExpired().then(
+      (n) {
+        if (n > 0) _logger.info('Deleted $n parts of interrupted files');
+      },
+      onError: (Object e) => _logger.warning('Could not delete expired parts of interrupted files', e),
+    );
+    unawaited(cleanExpired());
+    Timer.periodic(partialFileExpiryCheckInterval, (_) => unawaited(cleanExpired()));
+  }
+
   if (appStart && checkPlatform([TargetPlatform.android]) && (ref.read(deviceInfoProvider).androidSdkInt ?? 0) >= 29) {
     // Shuttle: on Android 10+, received images/videos are written straight into gallery entries (hidden until complete). If the app
     // was killed mid-transfer, such incomplete entries linger and waste space, so delete them at startup. Only entries created
-    // before this launch are deleted, so a transfer that has just started is never touched.
+    // before this launch are deleted, so a transfer that has just started is never touched. Entries holding the part of a file
+    // that can still be continued (resume) stay until they expire.
     unawaited(
-      deletePendingMediaStoreFilesAndroid(createdBefore: startedAt).then(
-        (n) {
-          if (n > 0) _logger.info('Deleted $n incomplete gallery entries');
-        },
-        onError: (Object e) => _logger.warning('Could not delete incomplete gallery entries', e),
-      ),
+      ref
+          .read(resumeStoreProvider)
+          .galleryUris()
+          .then((keepUris) => deletePendingMediaStoreFilesAndroid(createdBefore: startedAt, keepUris: keepUris))
+          .then(
+            (n) {
+              if (n > 0) _logger.info('Deleted $n incomplete gallery entries');
+            },
+            onError: (Object e) => _logger.warning('Could not delete incomplete gallery entries', e),
+          ),
     );
   }
 

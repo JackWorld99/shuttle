@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/state/server/receive_session_state.dart';
 import 'package:localsend_app/model/state/server/receiving_file.dart';
 import 'package:localsend_app/pages/home_page.dart';
@@ -31,6 +32,7 @@ import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
 import 'package:localsend_app/util/native/win_window.dart';
 import 'package:localsend_app/util/shareme_file_safety.dart';
+import 'package:localsend_app/util/shareme_resume.dart';
 import 'package:localsend_app/util/shareme_sender_identity.dart';
 import 'package:localsend_app/widget/shareme/message_sheet.dart';
 import 'package:localsend_app/widget/shareme/quick_saved_notice.dart';
@@ -53,6 +55,27 @@ import 'package:window_manager/window_manager.dart';
 
 final _logger = Logger('ReceiveController');
 
+/// Shuttle: how long after its last activity an accepted request can be continued without asking again.
+const _continuationWindow = Duration(minutes: 30);
+
+/// Shuttle: a request the user (or quick save) accepted, remembered so that its continuation after a lost connection
+/// is accepted the same way without asking again.
+class _AcceptedRequest {
+  final String sessionId;
+
+  /// The certificate of the sender (continuations are bound to it).
+  final String senderCert;
+
+  /// The desired file name by content ([_contentKey]).
+  final Map<String, String> names;
+
+  DateTime lastActivity;
+
+  _AcceptedRequest({required this.sessionId, required this.senderCert, required this.names, required this.lastActivity});
+}
+
+String _contentKey(String sha256, int size) => '${sha256.toLowerCase()}|$size';
+
 /// Handles all server events for receiving files.
 /// The HTTP requests themselves are served by the Rust server which emits
 /// the events handled here.
@@ -60,6 +83,9 @@ class ReceiveController {
   final ServerUtils server;
 
   ReceiveController(this.server);
+
+  /// Shuttle: the last accepted request that can be continued (resume extension).
+  _AcceptedRequest? _lastAccepted;
 
   /// A device registered itself on this server.
   Future<void> onRegister(HttpServerRegisterEvent event) async {
@@ -91,6 +117,23 @@ class ReceiveController {
   /// The Rust server already checked the PIN and enforces that only one
   /// session can be active at a time.
   Future<void> onPrepareUpload(HttpServerPrepareUploadEvent event) async {
+    // Shuttle: continuing interrupted files is bound to the sender's certificate.
+    server.ref
+        .read(resumeStoreProvider)
+        .registerSession(
+          sessionId: event.sessionId,
+          senderCert: event.resume != null ? event.certFingerprint : null,
+          files: {for (final entry in event.files.entries) entry.key: entry.value.toDart()},
+        );
+
+    // Shuttle: the sender lost its connection and continues a request accepted a moment ago: accepted again without
+    // asking, with the same names, and on the same page if it is still open.
+    final continued = _continuationOf(event);
+    if (continued != null && server.getStateOrNull()?.session?.sessionId == continued.sessionId) {
+      await _continueOnSamePage(event, continued);
+      return;
+    }
+
     if (server.getStateOrNull()?.session != null) {
       // The Rust server is the authority on the single-session invariant:
       // a new request means the old session is over (e.g. finished but still
@@ -161,6 +204,13 @@ class ReceiveController {
       // The upload page (receive via link) is being served and requests should be accepted automatically.
       quickSave = true;
     }
+    if (continued != null) {
+      // Shuttle: the continuation of an accepted request whose page is closed by now. Where its files continue is only
+      // known once the interrupted uploads of the old session reported what they saved.
+      quickSave = true;
+      await server.ref.read(resumeStoreProvider).settled(continued.sessionId);
+      if (server.getStateOrNull()?.session?.sessionId != sessionId) return;
+    }
 
     if (quickSave) {
       // Shuttle desktop: while the main window is in the tray / minimized, progress and completion show in the small bottom-right popup
@@ -180,7 +230,7 @@ class ReceiveController {
 
       // accept all files
       await acceptFileRequest({
-        for (final f in files.values) f.id: f.fileName,
+        for (final f in files.values) f.id: continued?.names[_contentKey(f.hash!, f.size)] ?? f.fileName,
       });
       return;
     }
@@ -319,6 +369,10 @@ class ReceiveController {
   /// ([HttpServerReceiveConfig] was sent with the accept decision);
   /// only the session state is updated here.
   void onFileUpload(HttpServerFileUploadEvent event) {
+    // Shuttle: counted for every session, also one being replaced by its continuation
+    server.ref.read(resumeStoreProvider).onUploadStarted(event.sessionId);
+    ReceiveContinuation.touch(event.sessionId);
+
     final receiveState = server.getStateOrNull()?.session;
     const allowedStates = {SessionStatus.sending, SessionStatus.finishedWithErrors};
     if (receiveState == null || receiveState.sessionId != event.sessionId || !allowedStates.contains(receiveState.status)) {
@@ -355,6 +409,13 @@ class ReceiveController {
     final receiveState = server.getStateOrNull()?.session;
     if (receiveState == null || receiveState.sessionId != event.sessionId) {
       return;
+    }
+
+    // Shuttle: data is arriving (for the "connection seems lost" hint and the continuation window)
+    ReceiveContinuation.touch(event.sessionId);
+    final accepted = _lastAccepted;
+    if (accepted != null && accepted.sessionId == event.sessionId) {
+      accepted.lastActivity = DateTime.now();
     }
 
     server.ref
@@ -398,8 +459,16 @@ class ReceiveController {
     );
   }
 
+  /// Shuttle: the saved part of a continuable upload, remembered for a later continuation.
+  void onFilePartial(HttpServerFilePartialEvent event) {
+    unawaited(server.ref.read(resumeStoreProvider).onPartial(event));
+  }
+
   /// A file has been received completely (or failed) by the server isolate.
   Future<void> onFileUploadResult(HttpServerFileUploadResultEvent event) async {
+    // Shuttle: also for a session that was replaced by its continuation, whose part must be known to continue it
+    await server.ref.read(resumeStoreProvider).onResult(event);
+
     final receiveState = server.getStateOrNull()?.session;
     const allowedStates = {SessionStatus.sending, SessionStatus.finishedWithErrors};
     if (receiveState == null || receiveState.sessionId != event.sessionId || !allowedStates.contains(receiveState.status)) {
@@ -460,13 +529,17 @@ class ReceiveController {
           );
     } else {
       server.ref.notifier(fileTransferProvider).setStatus(sessionId: event.sessionId, fileId: fileId, status: FileStatus.failed);
+      // Shuttle: the part that arrived is kept for a continuation; say so instead of the technical error
+      final partialSaved = event.partialSaved;
+      final size = receivingFile.file.size;
+      final message = partialSaved != null && size > 0 ? t.shareme.resume.receiveKept(percent: (partialSaved * 100 ~/ size).clamp(1, 99)) : error;
       server.setState(
         (oldState) => oldState?.copyWith(
           session: oldState.session?.fileFinished(
             fileId: fileId,
             path: null,
             savedToGallery: false,
-            errorMessage: error,
+            errorMessage: message,
           ),
         ),
       );
@@ -563,6 +636,9 @@ class ReceiveController {
         break;
       case SessionEndReasonV2.cancelled:
         _cancelBySender(server);
+      case SessionEndReasonV2.replaced:
+        // Shuttle: the sender lost its connection and continues in a new request, which follows right away
+        break;
     }
   }
 
@@ -637,10 +713,13 @@ class ReceiveController {
     if (fileNameMap.isEmpty) {
       // nothing selected, the Rust server responds with 204 and creates no session
       // This usually happens for message transfers
-      server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(config: _buildReceiveConfig(session, {})));
+      server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(config: _buildReceiveConfig(session, {}, null)));
       closeSession();
       return;
     }
+
+    // Shuttle: remembered so that a continuation after a lost connection is accepted the same way
+    _rememberAccepted(session, fileNameMap);
 
     unawaited(setTrayReminder(false)); // Shuttle: the request was handled, clear the tray reminder dot
     server.setState(
@@ -699,18 +778,22 @@ class ReceiveController {
     //   with the storage permission requests above.
     TransferNotification.start(sessionId: session.sessionId, receiving: true);
 
+    // Shuttle: where each file starts, if parts of it arrived earlier (resume extension)
+    final plan = await server.ref.read(resumeStoreProvider).plan(sessionId: session.sessionId, acceptedIds: fileNameMap.keys);
+    _showResumedProgress(session.sessionId, plan);
+
     // From here on, the server isolate receives all accepted files on its own
     // and reports back via upload progress/result events.
     final updatedSession = server.getStateOrNull()?.session;
-    if (updatedSession == null) {
+    if (updatedSession == null || updatedSession.sessionId != session.sessionId) {
       return;
     }
     server.ref
         .redux(parentIsolateProvider)
-        .dispatch(IsolateHttpServerPrepareUploadDecisionAction(config: _buildReceiveConfig(updatedSession, fileNameMap)));
+        .dispatch(IsolateHttpServerPrepareUploadDecisionAction(config: _buildReceiveConfig(updatedSession, fileNameMap, plan)));
   }
 
-  HttpServerReceiveConfig _buildReceiveConfig(ReceiveSessionState session, Map<String, String> fileNameMap) {
+  HttpServerReceiveConfig _buildReceiveConfig(ReceiveSessionState session, Map<String, String> fileNameMap, ResumePlan? plan) {
     return HttpServerReceiveConfig(
       sessionId: session.sessionId,
       fileNameMap: fileNameMap,
@@ -718,7 +801,127 @@ class ReceiveController {
       cacheDirectory: session.cacheDirectory,
       saveToGallery: session.saveToGallery,
       androidSdkInt: server.ref.read(deviceInfoProvider).androidSdkInt,
+      resumeOffsets: plan?.offsets,
+      partialFiles: plan?.partialFiles ?? const {},
     );
+  }
+
+  /// Shuttle: the continuation of [previous] if [event] is one: the same sender certificate continues the session it
+  /// names, not long after it was last active, with files that were accepted in it.
+  _AcceptedRequest? _continuationOf(HttpServerPrepareUploadEvent event) {
+    final previous = _lastAccepted;
+    final resumeOf = event.resume?.resumeOf;
+    final cert = event.certFingerprint;
+    if (previous == null || resumeOf == null || cert == null) return null;
+    if (previous.sessionId != resumeOf || previous.senderCert != cert) return null;
+    if (DateTime.now().difference(previous.lastActivity) > _continuationWindow) return null;
+    for (final file in event.files.values) {
+      final sha256 = file.sha256;
+      if (sha256 == null || !previous.names.containsKey(_contentKey(sha256, file.size.toInt()))) return null;
+    }
+    return previous;
+  }
+
+  /// Shuttle: remembers an accepted request that can be continued.
+  void _rememberAccepted(ReceiveSessionState session, Map<String, String> fileNameMap) {
+    final cert = session.sender.fingerprint;
+    if (!server.ref.read(resumeStoreProvider).isResumable(session.sessionId)) {
+      return;
+    }
+    _lastAccepted = _AcceptedRequest(
+      sessionId: session.sessionId,
+      senderCert: cert,
+      names: {
+        for (final entry in fileNameMap.entries)
+          if (session.files[entry.key]?.file.hash case final sha256?) _contentKey(sha256, session.files[entry.key]!.file.size): entry.value,
+      },
+      lastActivity: DateTime.now(),
+    );
+  }
+
+  /// Shuttle: shows the files that continue where an earlier upload stopped at that point, not at 0.
+  void _showResumedProgress(String sessionId, ResumePlan? plan) {
+    final session = server.getStateOrNull()?.session;
+    if (plan == null || session == null || session.sessionId != sessionId) return;
+    for (final MapEntry(key: fileId, value: offset) in plan.offsets.entries) {
+      final size = session.files[fileId]?.file.size ?? 0;
+      if (offset > 0 && size > 0) {
+        server.ref.notifier(fileTransferProvider).setProgress(sessionId: sessionId, fileId: fileId, progress: offset / size);
+      }
+    }
+  }
+
+  /// Shuttle: the sender continues [previous] (shown on the open page) after losing its connection. The page keeps
+  /// showing the transfer: its files and their progress move over to the new session.
+  Future<void> _continueOnSamePage(HttpServerPrepareUploadEvent event, _AcceptedRequest previous) async {
+    final newId = event.sessionId;
+    final oldId = previous.sessionId;
+    _logger.info('Session $oldId continues as $newId (${event.files.length} files)');
+
+    // What the interrupted uploads saved decides where the files continue.
+    final resumeStore = server.ref.read(resumeStoreProvider);
+    await resumeStore.settled(oldId);
+
+    final current = server.getStateOrNull()?.session;
+    if (current == null || current.sessionId != oldId) {
+      // The page was closed meanwhile: decline, the sender asks again with "Continue sending"
+      server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerPrepareUploadDecisionAction(config: null));
+      return;
+    }
+
+    final offered = {for (final entry in event.files.entries) entry.key: entry.value.toDart()};
+    final fileNameMap = {for (final f in offered.values) f.id: previous.names[_contentKey(f.hash!, f.size)]!};
+    final transfers = server.ref.notifier(fileTransferProvider);
+    final oldStatuses = {for (final f in current.files.values) f.file.id: transfers.getStatus(sessionId: oldId, fileId: f.file.id)};
+    final oldProgress = {for (final f in current.files.values) f.file.id: transfers.getProgress(sessionId: oldId, fileId: f.file.id)};
+
+    server.setState(
+      (oldState) => oldState?.copyWith(
+        session: current.copyWith(
+          sessionId: newId,
+          status: SessionStatus.sending,
+          endTime: null,
+          files: {
+            ...current.files,
+            for (final f in offered.values)
+              f.id: ReceivingFile(
+                file: f,
+                token: null,
+                desiredName: fileNameMap[f.id],
+                path: null,
+                savedToGallery: false,
+                errorMessage: null,
+              ),
+          },
+        ),
+      ),
+    );
+    transfers.setStatuses(
+      sessionId: newId,
+      statuses: {
+        for (final MapEntry(key: id, value: status) in oldStatuses.entries) id: offered.containsKey(id) ? FileStatus.queue : status,
+      },
+    );
+    for (final MapEntry(key: id, value: progress) in oldProgress.entries) {
+      if (!offered.containsKey(id)) transfers.setProgress(sessionId: newId, fileId: id, progress: progress);
+    }
+    transfers.removeSession(oldId);
+    ReceiveContinuation.link(from: oldId, to: newId);
+    // Registered before the old one goes, so the service keeping the process alive does not stop in between.
+    TransferNotification.start(sessionId: newId, receiving: true);
+    TransferNotification.stop(oldId);
+    previous.lastActivity = DateTime.now();
+    _lastAccepted = _AcceptedRequest(sessionId: newId, senderCert: previous.senderCert, names: previous.names, lastActivity: DateTime.now());
+
+    final plan = await resumeStore.plan(sessionId: newId, acceptedIds: fileNameMap.keys);
+    _showResumedProgress(newId, plan);
+    final session = server.getStateOrNull()?.session;
+    if (session == null || session.sessionId != newId) {
+      return;
+    }
+    server.ref
+        .redux(parentIsolateProvider)
+        .dispatch(IsolateHttpServerPrepareUploadDecisionAction(config: _buildReceiveConfig(session, fileNameMap, plan)));
   }
 
   void declineFileRequest() {
@@ -766,6 +969,10 @@ class ReceiveController {
     // fail further uploads
     server.ref.redux(parentIsolateProvider).dispatch(IsolateHttpServerCancelSessionAction(sessionId: session.sessionId));
 
+    // Shuttle: canceling is not an interruption, the parts received so far go
+    unawaited(server.ref.read(resumeStoreProvider).discardSession(session.sessionId));
+    if (_lastAccepted?.sessionId == session.sessionId) _lastAccepted = null;
+
     // notify sender
     final target = session.sender;
     try {
@@ -812,6 +1019,8 @@ void _cancelBySender(ServerUtils server) {
 
   TransferNotification.stop(receiveSession.sessionId);
   unawaited(setTrayReminder(false)); // Shuttle: the sender canceled, nothing left for you to decide
+  // Shuttle: canceling is not an interruption, the parts received so far go
+  unawaited(server.ref.read(resumeStoreProvider).discardSession(receiveSession.sessionId));
 
   if (receiveSession.status == SessionStatus.waiting) {
     // received cancel during accept/decline

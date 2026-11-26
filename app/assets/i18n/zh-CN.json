@@ -573,6 +573,15 @@
       "openFailed": "没能打开安装程序",
       "downloadFailed": "下载失败，稍后再试",
       "versionBuild": "{version} ({build})"
+    },
+    "resume": {
+      "sendReconnecting": "连接断了，正在重新连接…（已发 {percent}%）",
+      "sendContinuingFrom": "从 {percent}% 接着发",
+      "sendNotFinished": "没发完：已发 {percent}%（{size}），对方存着这部分",
+      "sendContinue": "继续发送",
+      "receiveSeemsLost": "连接好像断了，等对方接着发…",
+      "receiveKept": "没收完（已收 {percent}%）· 对方重新发送时会接着收，3 天内有效",
+      "receiveBefore": "上次收到 {percent}%，这次接着收"
     }
   },
   "general": {

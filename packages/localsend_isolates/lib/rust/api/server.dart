@@ -103,9 +103,20 @@ abstract class RsHttpServer implements RustOpaqueInterface {
   /// taking a [StreamSink], so a returned error would become an uncaught
   /// async error killing the calling isolate.
   ///
+  /// Shuttle: for an upload that can be continued, [RsFileUploadEvent::Saved]
+  /// reports how much of the file is safely on disk, the last one before
+  /// the stream ends. For an upload that continues at an offset, a file
+  /// descriptor must be opened for reading and writing ("rw").
+  ///
   /// Timestamps provided in the sender's file metadata are applied to the
   /// written file by the server.
-  Stream<double> respondFileUpload({required String sessionId, required String fileId, String? path, int? fileDescriptor, required BigInt fileSize});
+  Stream<RsFileUploadEvent> respondFileUpload({
+    required String sessionId,
+    required String fileId,
+    String? path,
+    int? fileDescriptor,
+    required BigInt fileSize,
+  });
 
   /// Answers the pending [RsServerEvent::WebPrepareDownload] event.
   ///
@@ -116,7 +127,12 @@ abstract class RsHttpServer implements RustOpaqueInterface {
   ///
   /// Passing the accepted file IDs (a subset of the offered files) accepts the request.
   /// Passing `None` declines the request.
-  Future<void> respondPrepareUpload({List<String>? acceptedFileIds});
+  ///
+  /// Shuttle: [resume_offsets] lists the accepted files that can be continued
+  /// if their upload is interrupted, with the offset their upload starts at
+  /// (the bytes already held from an earlier upload of the same file by the
+  /// same sender, or 0). Only used when the request asked for it.
+  Future<void> respondPrepareUpload({List<String>? acceptedFileIds, Map<String, BigInt>? resumeOffsets});
 
   /// Stops the server.
   /// Returns after the listeners are closed, so the port can be bound again.
@@ -171,6 +187,24 @@ class RegisterDtoV2 {
 }
 
 @freezed
+sealed class RsFileUploadEvent with _$RsFileUploadEvent {
+  const RsFileUploadEvent._();
+
+  /// The fraction of the file received so far (counting from the start of
+  /// the file, also when the upload continues at an offset).
+  const factory RsFileUploadEvent.progress({
+    required double progress,
+  }) = RsFileUploadEvent_Progress;
+
+  /// Shuttle: how many bytes of a continuable upload are safely on disk, i.e.
+  /// the offset the upload can be continued from. 0 means nothing of it can
+  /// be continued (checksum mismatch).
+  const factory RsFileUploadEvent.saved({
+    required BigInt bytes,
+  }) = RsFileUploadEvent_Saved;
+}
+
+@freezed
 sealed class RsServerEvent with _$RsServerEvent {
   const RsServerEvent._();
 
@@ -197,6 +231,13 @@ sealed class RsServerEvent with _$RsServerEvent {
     /// `None` when the server runs without TLS.
     String? certFingerprint,
     required Map<String, FileDto> files,
+
+    /// Shuttle's resume extension, when the sender asked for it (only with
+    /// a client certificate). Answer with offsets in
+    /// [RsHttpServer::respond_prepare_upload] to let files continue. When
+    /// `resume_of` names the session that was active until now, that
+    /// session was replaced by this request ([SessionEndReasonV2::Replaced]).
+    ShuttleResumeRequest? resume,
   }) = RsServerEvent_PrepareUpload;
 
   /// An accepted file is being uploaded via `POST /api/localsend/v2/upload`.
@@ -204,6 +245,14 @@ sealed class RsServerEvent with _$RsServerEvent {
     required String sessionId,
     required String fileId,
     required FileDto file,
+
+    /// Shuttle: the upload continues at this offset: the target must
+    /// already hold that many bytes of the file. 0 for the whole file.
+    required BigInt offset,
+
+    /// Shuttle: the upload can be continued later if it is interrupted;
+    /// keep the received part ([RsFileUploadEvent::Saved]).
+    required bool resumable,
   }) = RsServerEvent_FileUpload;
 
   /// An upload session ended.
@@ -267,6 +316,7 @@ sealed class RsServerEvent with _$RsServerEvent {
 enum SessionEndReasonV2 {
   finished,
   cancelled,
+  replaced,
 }
 
 class TlsConfig {

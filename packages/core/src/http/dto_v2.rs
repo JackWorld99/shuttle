@@ -94,7 +94,37 @@ pub struct PrepareUploadRequestDtoV2 {
 
     /// Map of file ID to file metadata.
     pub files: HashMap<String, FileDto>,
+
+    /// Shuttle: the sender can continue interrupted uploads (see [ShuttleResumeRequest]).
+    /// Not part of the LocalSend protocol; receivers that do not know it ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shuttle_resume: Option<ShuttleResumeRequest>,
 }
+
+/// Shuttle's resume extension of `prepare-upload` (not part of the LocalSend protocol).
+///
+/// A sender that sets it can upload a file starting at an offset the receiver
+/// names in [PrepareUploadResponseDtoV2::shuttle_resume], via the `offset`
+/// query parameter of `upload`. The receiver keeps the part of a file it
+/// received before a connection was lost and offers to continue it when the
+/// same sender (identified by its client certificate) offers the same file
+/// (identified by its SHA-256 and size) again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShuttleResumeRequest {
+    /// Version of the extension, currently 1.
+    pub v: u32,
+
+    /// The receiver's session ID of an upload that this request continues
+    /// after the connection was lost. The receiver may then replace that
+    /// session if it is still active (it has not noticed the lost connection
+    /// yet) and skip asking its user again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_of: Option<String>,
+}
+
+/// The version of [ShuttleResumeRequest] implemented here.
+pub const SHUTTLE_RESUME_VERSION: u32 = 1;
 
 /// Prepare upload response DTO for v2.2 protocol.
 ///
@@ -108,6 +138,14 @@ pub struct PrepareUploadResponseDtoV2 {
     /// Map of file ID to file token.
     /// Only contains files that were accepted by the receiver.
     pub files: HashMap<String, String>,
+
+    /// Shuttle: map of file ID to the offset the upload of that file starts at,
+    /// for the files the receiver can continue (see [ShuttleResumeRequest]).
+    /// Only sent in answer to a request with `shuttleResume`. A file listed here
+    /// must be uploaded with the `offset` query parameter; an offset of 0 means
+    /// that nothing was received yet but the upload can be continued later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shuttle_resume: Option<HashMap<String, u64>>,
 }
 
 pub struct PrepareUploadResultV2 {
@@ -248,11 +286,58 @@ mod tests {
                     metadata: None,
                 },
             )]),
+            shuttle_resume: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"info\""));
         assert!(json.contains("\"files\""));
         assert!(json.contains("\"fingerprint\":\"sender-fingerprint\""));
+        // Peers that do not know the resume extension never see it
+        assert!(!json.contains("shuttleResume"));
+    }
+
+    #[test]
+    fn test_shuttle_resume_round_trip() {
+        let json = r#"{
+            "info": {"alias": "A", "version": "2.1", "fingerprint": "f", "port": 1, "protocol": "https"},
+            "files": {},
+            "shuttleResume": {"v": 1, "resumeOf": "old-session"}
+        }"#;
+        let request: PrepareUploadRequestDtoV2 = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            request.shuttle_resume,
+            Some(ShuttleResumeRequest {
+                v: 1,
+                resume_of: Some("old-session".to_string()),
+            })
+        );
+
+        let response: PrepareUploadResponseDtoV2 = serde_json::from_str(
+            r#"{"sessionId": "s", "files": {"a": "t"}, "shuttleResume": {"a": 42}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            response.shuttle_resume,
+            Some(HashMap::from([("a".to_string(), 42)]))
+        );
+
+        // A LocalSend receiver's answer has no offsets
+        let response: PrepareUploadResponseDtoV2 =
+            serde_json::from_str(r#"{"sessionId": "s", "files": {"a": "t"}}"#).unwrap();
+        assert_eq!(response.shuttle_resume, None);
+    }
+
+    #[test]
+    fn test_unknown_fields_are_ignored() {
+        // A future version of the extension (or of LocalSend) may add fields
+        let json = r#"{
+            "info": {"alias": "A", "version": "2.1", "fingerprint": "f", "port": 1, "protocol": "https"},
+            "files": {},
+            "shuttleResume": {"v": 2, "somethingNew": true},
+            "somethingElse": 1
+        }"#;
+        let request: PrepareUploadRequestDtoV2 = serde_json::from_str(json).unwrap();
+        assert_eq!(request.shuttle_resume.map(|r| r.v), Some(2));
     }
 }

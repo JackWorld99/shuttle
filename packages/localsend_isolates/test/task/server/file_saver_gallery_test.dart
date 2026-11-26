@@ -30,6 +30,7 @@ void main() {
     answer = (call) => switch (call.method) {
       'createMediaStoreFile' => {'uri': 'content://media/external/images/media/7', 'fd': 42},
       'openFileForWriting' => 43,
+      'openFileForContinuing' => 44,
       'deleteMediaStoreFile' => true,
       _ => null,
     };
@@ -91,7 +92,8 @@ void main() {
       final target = await prepare(fileName: 'photo.xyz');
 
       expect(target.kind, FileSaveKind.destination);
-      expect(target.path, p.join(destination, 'photo.xyz'));
+      // Shuttle: received under a temporary name until it is complete
+      expect(target.path, p.join(destination, 'photo.xyz$partialFileSuffix'));
       expect(calls.map((c) => c.method), ['createMediaStoreFile']);
     });
 
@@ -104,7 +106,7 @@ void main() {
       final target = await prepare(saveToGallery: false, androidSdkInt: 34);
 
       expect(target.kind, FileSaveKind.destination);
-      expect(target.path, p.join(destination, 'photo.jpg'));
+      expect(target.path, p.join(destination, 'photo.jpg$partialFileSuffix'));
       expect(calls, isEmpty);
     });
   });
@@ -143,6 +145,7 @@ void main() {
 
   test('a file in the destination directory is reported with its path', () async {
     final target = await prepare(saveToGallery: false);
+    File(target.path!).writeAsStringSync('complete');
 
     final result = await completeFileSaveTarget(
       target: target,
@@ -154,6 +157,9 @@ void main() {
 
     expect(result, (false, p.join(destination, 'photo.jpg')));
     expect(calls, isEmpty);
+    // Shuttle: only the complete file gets its real name
+    expect(filesIn(destination), ['photo.jpg']);
+    expect(File(p.join(destination, 'photo.jpg')).readAsStringSync(), 'complete');
   });
 
   test('a failed attempt deletes its gallery entry', () async {
@@ -166,14 +172,131 @@ void main() {
     expect(calls.single.arguments, {'uri': 'content://media/external/images/media/7'});
   });
 
-  test('a failed attempt keeps the incomplete file of other targets', () async {
+  test('a failed attempt deletes its partial file in the destination directory', () async {
     final target = await prepare(saveToGallery: false);
     File(target.path!).writeAsStringSync('partial');
 
     await discardFileSaveTarget(target);
 
     expect(calls, isEmpty);
-    expect(File(target.path!).readAsStringSync(), 'partial');
+    expect(filesIn(destination), isEmpty);
+  });
+
+  test('a failed attempt keeps the incomplete file of a SAF document (overwritten by a retry)', () async {
+    final target = FileSaveTarget(path: null, fileDescriptor: 9, displayPath: 'content://doc/1');
+
+    await discardFileSaveTarget(target);
+
+    expect(calls, isEmpty);
+  });
+
+  group('Shuttle: partial files (resume)', () {
+    test('a partial name that is taken gets a number, the real name is not touched', () async {
+      Directory(destination).createSync(recursive: true);
+      File(p.join(destination, 'video.mp4$partialFileSuffix')).writeAsStringSync('another transfer');
+
+      final target = await prepare(fileName: 'video.mp4', saveToGallery: false);
+
+      expect(target.path, p.join(destination, 'video.mp4 (2)$partialFileSuffix'));
+      expect(target.partial, isTrue);
+      expect(target.continuable, isTrue);
+    });
+
+    test('a complete file whose real name was taken meanwhile gets a numbered name', () async {
+      final target = await prepare(fileName: 'video.mp4', saveToGallery: false);
+      File(target.path!).writeAsStringSync('new');
+      File(p.join(destination, 'video.mp4')).writeAsStringSync('old');
+
+      final result = await completeFileSaveTarget(
+        target: target,
+        destinationDirectory: destination,
+        fileName: 'video.mp4',
+        isImage: false,
+        createdDirectories: {},
+      );
+
+      expect(result, (false, p.join(destination, 'video (2).mp4')));
+      expect(File(p.join(destination, 'video.mp4')).readAsStringSync(), 'old');
+      expect(File(p.join(destination, 'video (2).mp4')).readAsStringSync(), 'new');
+      expect(filesIn(destination).where((f) => f.endsWith(partialFileSuffix)), isEmpty);
+    });
+
+    test('a file of a folder transfer keeps its sub-directory', () async {
+      final target = await prepare(fileName: p.join('trip', 'clip.mp4'), saveToGallery: false);
+      File(target.path!).writeAsStringSync('clip');
+
+      final result = await completeFileSaveTarget(
+        target: target,
+        destinationDirectory: destination,
+        fileName: p.join('trip', 'clip.mp4'),
+        isImage: false,
+        createdDirectories: {},
+      );
+
+      expect(result, (false, p.join(destination, 'trip', 'clip.mp4')));
+    });
+
+    test('a gallery entry and a partial file can be continued, the gallery cache and SAF documents not', () async {
+      expect((await prepare()).continuable, isTrue);
+      expect((await prepare(saveToGallery: false)).continuable, isTrue);
+      expect((await prepare(androidSdkInt: 28)).continuable, isFalse);
+      expect(FileSaveTarget(path: null, fileDescriptor: 9, displayPath: 'content://doc/1').continuable, isFalse);
+    });
+
+    test('a partial file is continued at its path', () async {
+      final path = p.join(destination, 'video.mp4$partialFileSuffix');
+
+      final target = await reopenPartialFile(PartialFileLocation(path: path, uri: null));
+
+      expect(target.path, path);
+      expect(target.partial, isTrue);
+      expect(target.kind, FileSaveKind.destination);
+      expect(calls, isEmpty);
+    });
+
+    test('a pending gallery entry is opened for reading and writing to continue it', () async {
+      final target = await reopenPartialFile(const PartialFileLocation(path: null, uri: 'content://media/external/video/media/9'));
+
+      expect(target.kind, FileSaveKind.gallery);
+      expect(target.fileDescriptor, 44);
+      expect(target.displayPath, 'content://media/external/video/media/9');
+      expect(calls.single.method, 'openFileForContinuing');
+      expect(calls.single.arguments, {'uri': 'content://media/external/video/media/9'});
+    });
+
+    test('reopening a gallery entry to continue it does not truncate it', () async {
+      final target = await prepare();
+      calls.clear();
+
+      final reopened = await reopenFileSaveTarget(target, continuing: true);
+
+      expect(reopened.fileDescriptor, 44);
+      expect(calls.single.method, 'openFileForContinuing');
+    });
+
+    test('the location of a target is its path or its gallery entry', () async {
+      final file = await prepare(saveToGallery: false);
+      final entry = await prepare();
+
+      expect(PartialFileLocation.of(file).path, file.path);
+      expect(PartialFileLocation.of(file).uri, isNull);
+      expect(PartialFileLocation.of(entry).path, isNull);
+      expect(PartialFileLocation.of(entry).uri, 'content://media/external/images/media/7');
+    });
+
+    test('a part is discarded by its location', () async {
+      final target = await prepare(saveToGallery: false);
+      File(target.path!).writeAsStringSync('part');
+      calls.clear();
+
+      await discardPartialFile(PartialFileLocation(path: target.path, uri: null));
+      await discardPartialFile(const PartialFileLocation(path: null, uri: 'content://media/external/video/media/9'));
+      // Gone already: nothing to do, no error
+      await discardPartialFile(PartialFileLocation(path: target.path, uri: null));
+
+      expect(File(target.path!).existsSync(), isFalse);
+      expect(calls.single.method, 'deleteMediaStoreFile');
+    });
   });
 
   test('a gallery entry that cannot be deleted does not fail the cleanup', () async {

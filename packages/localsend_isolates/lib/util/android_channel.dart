@@ -150,11 +150,31 @@ Future<void> deleteMediaStoreFileAndroid({required String uri}) async {
 /// Deletes the gallery entries of [createMediaStoreFileAndroid] that were
 /// created before [createdBefore] and never published: files that were still
 /// being received when the app was closed. Returns how many were deleted.
-Future<int> deletePendingMediaStoreFilesAndroid({required DateTime createdBefore}) async {
+///
+/// Shuttle: entries whose content URI is in [keepUris] stay: they hold the
+/// part of a file whose upload can still be continued.
+Future<int> deletePendingMediaStoreFilesAndroid({required DateTime createdBefore, List<String> keepUris = const []}) async {
   final deleted = await _methodChannel.invokeMethod<int>('deletePendingMediaStoreFiles', {
     'createdBefore': createdBefore.millisecondsSinceEpoch ~/ 1000,
+    'keepUris': keepUris,
   });
   return deleted ?? 0;
+}
+
+/// Shuttle: opens an existing document or pending gallery entry for reading
+/// and writing ("rw"), keeping its content, to continue an interrupted upload
+/// into it. The part received earlier is read back to verify the checksum.
+///
+/// The descriptor stays open after this call and must be closed by the native
+/// consumer it is passed to.
+Future<int> openFileForContinuingAndroid({required String uri}) async {
+  final fileDescriptor = await _methodChannel.invokeMethod<int>('openFileForContinuing', {
+    'uri': uri,
+  });
+  if (fileDescriptor == null) {
+    throw StateError('Android returned no file descriptor for $uri');
+  }
+  return fileDescriptor;
 }
 
 /// Opens an existing document created by [createFileAndroid] for writing and

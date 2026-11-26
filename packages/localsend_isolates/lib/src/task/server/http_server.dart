@@ -49,8 +49,14 @@ class HttpServerService {
 
   /// Answers a pending prepare-upload request.
   /// [acceptedFileIds] is the subset of the offered files to accept; `null` declines the request.
-  Future<void> respondPrepareUpload({required List<String>? acceptedFileIds}) async {
-    await _requireServer().respondPrepareUpload(acceptedFileIds: acceptedFileIds);
+  ///
+  /// Shuttle: [resumeOffsets] lists the accepted files whose upload can be
+  /// continued if it is interrupted, with the offset it starts at.
+  Future<void> respondPrepareUpload({required List<String>? acceptedFileIds, Map<String, int>? resumeOffsets}) async {
+    await _requireServer().respondPrepareUpload(
+      acceptedFileIds: acceptedFileIds,
+      resumeOffsets: resumeOffsets?.map((id, offset) => MapEntry(id, BigInt.from(offset))),
+    );
   }
 
   /// Answers a pending file upload with the target the file should be saved to
@@ -60,9 +66,12 @@ class HttpServerService {
   /// file is being received and closes once the file has been received
   /// completely (or errors when saving failed).
   ///
+  /// Shuttle: for a continuable upload, it also emits how much of the file is
+  /// safely saved ([RsFileUploadEvent_Saved]), the last one before it closes.
+  ///
   /// Timestamps provided in the sender's file metadata are applied to the
   /// written file by the Rust server.
-  Stream<double> respondFileUpload({
+  Stream<RsFileUploadEvent> respondFileUpload({
     required String sessionId,
     required String fileId,
     required String? path,

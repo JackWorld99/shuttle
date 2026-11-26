@@ -93,6 +93,12 @@ impl RsHttpClient {
     /// returned: flutter_rust_bridge discards the returned `Result` of
     /// functions taking a [StreamSink], so a returned error would become an
     /// uncaught async error killing the calling isolate.
+    ///
+    /// Shuttle: [offset] continues an interrupted upload (only for a file the
+    /// receiver listed in its prepare-upload answer, with that offset or 0).
+    /// [stall_timeout_ms] fails the upload with a transport error when no file
+    /// content could be sent for that long (the connection went away silently).
+    /// Progress counts from the start of the file.
     pub async fn upload(
         &self,
         sink: StreamSink<RsUploadEvent>,
@@ -107,6 +113,8 @@ impl RsHttpClient {
         path: Option<String>,
         file_descriptor: Option<i32>,
         content_length: u64,
+        offset: Option<u64>,
+        stall_timeout_ms: Option<u32>,
         cancel_token: &RsCancellationToken,
     ) {
         let result = async {
@@ -142,6 +150,12 @@ impl RsHttpClient {
                     file_id,
                     token,
                     content,
+                    content_length,
+                    localsend::http::client::UploadOptions {
+                        offset,
+                        stall_timeout: stall_timeout_ms
+                            .map(|ms| std::time::Duration::from_millis(ms as u64)),
+                    },
                     progress,
                     cancel_token.inner.clone(),
                 )
@@ -239,6 +253,10 @@ impl From<ClientError> for RsHttpClientError {
             ClientError::Io(e) => RsHttpClientError::Io(e.to_string()),
             ClientError::Other(e) => RsHttpClientError::Other(e.to_string()),
             ClientError::Cancelled => RsHttpClientError::Other("Upload cancelled".to_string()),
+            // A transport failure like a lost connection.
+            ClientError::Stalled => {
+                RsHttpClientError::Reqwest("The connection stalled".to_string())
+            }
         }
     }
 }
@@ -293,6 +311,7 @@ mod tests {
                 has_web_interface: false,
             },
             files: Default::default(),
+            shuttle_resume: None,
         };
 
         let result = tokio::time::timeout(

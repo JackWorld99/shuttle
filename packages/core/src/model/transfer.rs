@@ -52,17 +52,55 @@ impl FileContent {
     /// the peer would store a truncated (or empty) file and the transfer would
     /// look successful on this side.
     pub fn into_stream(self) -> FileStream {
+        self.into_stream_from(0)
+    }
+
+    /// Like [FileContent::into_stream], but the stream starts at byte `offset`
+    /// of the file (Shuttle: to continue an interrupted upload).
+    ///
+    /// Files are positioned by seeking. A file descriptor that cannot seek
+    /// (e.g. a pipe from a document provider) and the application's byte
+    /// stream skip the first `offset` bytes by reading past them. A file
+    /// shorter than `offset` yields an error.
+    pub fn into_stream_from(self, offset: u64) -> FileStream {
         match self {
             FileContent::Stream(rx) => {
                 tracing::info!("Reading file content via byte stream from application");
-                Box::pin(ReceiverStream::new(rx).map(Ok))
+                let mut skip = offset;
+                Box::pin(ReceiverStream::new(rx).filter_map(move |chunk| {
+                    let chunk = match skip {
+                        0 => Some(Ok(chunk)),
+                        _ if skip >= chunk.len() as u64 => {
+                            skip -= chunk.len() as u64;
+                            None
+                        }
+                        _ => {
+                            let rest = chunk.slice(skip as usize..);
+                            skip = 0;
+                            Some(Ok(rest))
+                        }
+                    };
+                    std::future::ready(chunk)
+                }))
             }
             FileContent::Path(path) => {
-                tracing::info!("Reading file content from path: {}", path.display());
+                tracing::info!(
+                    "Reading file content from path: {} (from byte {offset})",
+                    path.display()
+                );
                 let (tx, rx) = mpsc::channel(FILE_CHANNEL_CAPACITY);
                 tokio::spawn(async move {
                     match tokio::fs::File::open(&path).await {
-                        Ok(file) => read_file_into_sender(file, tx).await,
+                        Ok(mut file) => match skip_to(&mut file, offset, true).await {
+                            Ok(()) => read_file_into_sender(file, tx).await,
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to start reading {} at {offset}: {e}",
+                                    path.display()
+                                );
+                                let _ = tx.send(Err(e)).await;
+                            }
+                        },
                         Err(e) => {
                             tracing::error!("Failed to open {}: {e}", path.display());
                             // Re-wrapped with the path: this message is what the
@@ -83,14 +121,64 @@ impl FileContent {
             FileContent::Fd(fd) => {
                 use std::os::fd::FromRawFd;
 
-                tracing::info!("Reading file content from file descriptor: {fd}");
+                tracing::info!(
+                    "Reading file content from file descriptor: {fd} (from byte {offset})"
+                );
                 let (tx, rx) = mpsc::channel(FILE_CHANNEL_CAPACITY);
                 // SAFETY: the descriptor is owned by this transfer; wrapping it in
                 // a File transfers that ownership so it is closed once reading finishes.
                 let std_file = unsafe { std::fs::File::from_raw_fd(fd) };
-                let file = tokio::fs::File::from_std(std_file);
-                tokio::spawn(read_file_into_sender(file, tx));
+                let mut file = tokio::fs::File::from_std(std_file);
+                tokio::spawn(async move {
+                    // The size of a descriptor (a pipe has none) is not checked.
+                    match skip_to(&mut file, offset, false).await {
+                        Ok(()) => read_file_into_sender(file, tx).await,
+                        Err(e) => {
+                            tracing::error!("Failed to start reading at {offset}: {e}");
+                            let _ = tx.send(Err(e)).await;
+                        }
+                    }
+                });
                 Box::pin(ReceiverStream::new(rx))
+            }
+        }
+    }
+}
+
+/// Positions `file` at `offset`: by seeking, or, if the file cannot seek, by
+/// reading past the first `offset` bytes.
+///
+/// With `check_size`, a file shorter than `offset` is an error instead of an
+/// (incomplete) empty stream.
+async fn skip_to(file: &mut tokio::fs::File, offset: u64, check_size: bool) -> std::io::Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+    if offset == 0 {
+        return Ok(());
+    }
+    if check_size {
+        let len = file.metadata().await?.len();
+        if len < offset {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!("The file has {len} bytes, the upload continues at {offset}"),
+            ));
+        }
+    }
+    match file.seek(std::io::SeekFrom::Start(offset)).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            tracing::info!("Cannot seek ({e}), reading past the first {offset} bytes instead");
+            let skipped =
+                tokio::io::copy(&mut (&mut *file).take(offset), &mut tokio::io::sink()).await?;
+            match skipped == offset {
+                true => Ok(()),
+                false => Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    format!(
+                        "The file ended after {skipped} bytes, the upload continues at {offset}"
+                    ),
+                )),
             }
         }
     }
@@ -332,5 +420,47 @@ mod tests {
             content.extend_from_slice(&chunk.expect("a readable file must not fail the stream"));
         }
         assert_eq!(content.as_slice(), b"hello");
+    }
+
+    async fn collect_ok(stream: FileStream) -> Vec<u8> {
+        let mut content = Vec::new();
+        for chunk in stream.collect::<Vec<_>>().await {
+            content.extend_from_slice(&chunk.expect("the stream must not fail"));
+        }
+        content
+    }
+
+    /// Shuttle: continuing an upload reads the rest of the file only.
+    #[tokio::test]
+    async fn path_stream_starts_at_offset() {
+        let path = std::env::temp_dir().join(format!("localsend-offset-{}", uuid::Uuid::new_v4()));
+        std::fs::write(&path, b"hello world").unwrap();
+
+        let rest = collect_ok(FileContent::Path(path.clone()).into_stream_from(6)).await;
+        let all = collect_ok(FileContent::Path(path.clone()).into_stream_from(11)).await;
+        let too_far: Vec<_> = FileContent::Path(path.clone())
+            .into_stream_from(12)
+            .collect()
+            .await;
+        std::fs::remove_file(&path).unwrap();
+
+        assert_eq!(rest.as_slice(), b"world");
+        assert!(all.is_empty());
+        // Past the end is an error, not a silently empty (incomplete) upload.
+        assert_eq!(too_far.len(), 1);
+        assert!(too_far[0].is_err());
+    }
+
+    /// Shuttle: the application's byte stream skips the first bytes, across chunks.
+    #[tokio::test]
+    async fn byte_stream_skips_to_offset() {
+        let (tx, rx) = mpsc::channel(4);
+        for chunk in [&b"hel"[..], b"lo ", b"world"] {
+            tx.send(Bytes::copy_from_slice(chunk)).await.unwrap();
+        }
+        drop(tx);
+
+        let rest = collect_ok(FileContent::Stream(rx).into_stream_from(4)).await;
+        assert_eq!(rest.as_slice(), b"o world");
     }
 }

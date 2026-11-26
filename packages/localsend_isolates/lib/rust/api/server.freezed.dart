@@ -12,6 +12,298 @@ part of 'server.dart';
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
+mixin _$RsFileUploadEvent {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RsFileUploadEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'RsFileUploadEvent()';
+}
+
+
+}
+
+/// @nodoc
+class $RsFileUploadEventCopyWith<$Res>  {
+$RsFileUploadEventCopyWith(RsFileUploadEvent _, $Res Function(RsFileUploadEvent) __);
+}
+
+
+/// Adds pattern-matching-related methods to [RsFileUploadEvent].
+extension RsFileUploadEventPatterns on RsFileUploadEvent {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( RsFileUploadEvent_Progress value)?  progress,TResult Function( RsFileUploadEvent_Saved value)?  saved,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case RsFileUploadEvent_Progress() when progress != null:
+return progress(_that);case RsFileUploadEvent_Saved() when saved != null:
+return saved(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( RsFileUploadEvent_Progress value)  progress,required TResult Function( RsFileUploadEvent_Saved value)  saved,}){
+final _that = this;
+switch (_that) {
+case RsFileUploadEvent_Progress():
+return progress(_that);case RsFileUploadEvent_Saved():
+return saved(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( RsFileUploadEvent_Progress value)?  progress,TResult? Function( RsFileUploadEvent_Saved value)?  saved,}){
+final _that = this;
+switch (_that) {
+case RsFileUploadEvent_Progress() when progress != null:
+return progress(_that);case RsFileUploadEvent_Saved() when saved != null:
+return saved(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( double progress)?  progress,TResult Function( BigInt bytes)?  saved,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case RsFileUploadEvent_Progress() when progress != null:
+return progress(_that.progress);case RsFileUploadEvent_Saved() when saved != null:
+return saved(_that.bytes);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( double progress)  progress,required TResult Function( BigInt bytes)  saved,}) {final _that = this;
+switch (_that) {
+case RsFileUploadEvent_Progress():
+return progress(_that.progress);case RsFileUploadEvent_Saved():
+return saved(_that.bytes);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( double progress)?  progress,TResult? Function( BigInt bytes)?  saved,}) {final _that = this;
+switch (_that) {
+case RsFileUploadEvent_Progress() when progress != null:
+return progress(_that.progress);case RsFileUploadEvent_Saved() when saved != null:
+return saved(_that.bytes);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class RsFileUploadEvent_Progress extends RsFileUploadEvent {
+  const RsFileUploadEvent_Progress({required this.progress}): super._();
+  
+
+ final  double progress;
+
+/// Create a copy of RsFileUploadEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$RsFileUploadEvent_ProgressCopyWith<RsFileUploadEvent_Progress> get copyWith => _$RsFileUploadEvent_ProgressCopyWithImpl<RsFileUploadEvent_Progress>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RsFileUploadEvent_Progress&&(identical(other.progress, progress) || other.progress == progress));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,progress);
+
+@override
+String toString() {
+  return 'RsFileUploadEvent.progress(progress: $progress)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $RsFileUploadEvent_ProgressCopyWith<$Res> implements $RsFileUploadEventCopyWith<$Res> {
+  factory $RsFileUploadEvent_ProgressCopyWith(RsFileUploadEvent_Progress value, $Res Function(RsFileUploadEvent_Progress) _then) = _$RsFileUploadEvent_ProgressCopyWithImpl;
+@useResult
+$Res call({
+ double progress
+});
+
+
+
+
+}
+/// @nodoc
+class _$RsFileUploadEvent_ProgressCopyWithImpl<$Res>
+    implements $RsFileUploadEvent_ProgressCopyWith<$Res> {
+  _$RsFileUploadEvent_ProgressCopyWithImpl(this._self, this._then);
+
+  final RsFileUploadEvent_Progress _self;
+  final $Res Function(RsFileUploadEvent_Progress) _then;
+
+/// Create a copy of RsFileUploadEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? progress = null,}) {
+  return _then(RsFileUploadEvent_Progress(
+progress: null == progress ? _self.progress : progress // ignore: cast_nullable_to_non_nullable
+as double,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class RsFileUploadEvent_Saved extends RsFileUploadEvent {
+  const RsFileUploadEvent_Saved({required this.bytes}): super._();
+  
+
+ final  BigInt bytes;
+
+/// Create a copy of RsFileUploadEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$RsFileUploadEvent_SavedCopyWith<RsFileUploadEvent_Saved> get copyWith => _$RsFileUploadEvent_SavedCopyWithImpl<RsFileUploadEvent_Saved>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RsFileUploadEvent_Saved&&(identical(other.bytes, bytes) || other.bytes == bytes));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,bytes);
+
+@override
+String toString() {
+  return 'RsFileUploadEvent.saved(bytes: $bytes)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $RsFileUploadEvent_SavedCopyWith<$Res> implements $RsFileUploadEventCopyWith<$Res> {
+  factory $RsFileUploadEvent_SavedCopyWith(RsFileUploadEvent_Saved value, $Res Function(RsFileUploadEvent_Saved) _then) = _$RsFileUploadEvent_SavedCopyWithImpl;
+@useResult
+$Res call({
+ BigInt bytes
+});
+
+
+
+
+}
+/// @nodoc
+class _$RsFileUploadEvent_SavedCopyWithImpl<$Res>
+    implements $RsFileUploadEvent_SavedCopyWith<$Res> {
+  _$RsFileUploadEvent_SavedCopyWithImpl(this._self, this._then);
+
+  final RsFileUploadEvent_Saved _self;
+  final $Res Function(RsFileUploadEvent_Saved) _then;
+
+/// Create a copy of RsFileUploadEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? bytes = null,}) {
+  return _then(RsFileUploadEvent_Saved(
+bytes: null == bytes ? _self.bytes : bytes // ignore: cast_nullable_to_non_nullable
+as BigInt,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$RsServerEvent {
 
 
@@ -143,12 +435,12 @@ return listenerFailed(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String ip,  RegisterDtoV2 info)?  register,TResult Function( String sessionId,  String ip,  RegisterDtoV2 info,  String? certFingerprint,  Map<String, FileDto> files)?  prepareUpload,TResult Function( String sessionId,  String fileId,  FileDto file)?  fileUpload,TResult Function( String sessionId,  SessionEndReasonV2 reason)?  sessionEnd,TResult Function( String sessionId)?  prepareUploadAborted,TResult Function( String ip,  String sessionId)?  cancelReceived,TResult Function( String ip,  String sessionId,  String? userAgent)?  webPrepareDownload,TResult Function( String sessionId,  String fileId,  FileDto file)?  webFileDownload,TResult Function( List<String> args)?  show_,TResult Function( String error)?  listenerFailed,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String ip,  RegisterDtoV2 info)?  register,TResult Function( String sessionId,  String ip,  RegisterDtoV2 info,  String? certFingerprint,  Map<String, FileDto> files,  ShuttleResumeRequest? resume)?  prepareUpload,TResult Function( String sessionId,  String fileId,  FileDto file,  BigInt offset,  bool resumable)?  fileUpload,TResult Function( String sessionId,  SessionEndReasonV2 reason)?  sessionEnd,TResult Function( String sessionId)?  prepareUploadAborted,TResult Function( String ip,  String sessionId)?  cancelReceived,TResult Function( String ip,  String sessionId,  String? userAgent)?  webPrepareDownload,TResult Function( String sessionId,  String fileId,  FileDto file)?  webFileDownload,TResult Function( List<String> args)?  show_,TResult Function( String error)?  listenerFailed,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case RsServerEvent_Register() when register != null:
 return register(_that.ip,_that.info);case RsServerEvent_PrepareUpload() when prepareUpload != null:
-return prepareUpload(_that.sessionId,_that.ip,_that.info,_that.certFingerprint,_that.files);case RsServerEvent_FileUpload() when fileUpload != null:
-return fileUpload(_that.sessionId,_that.fileId,_that.file);case RsServerEvent_SessionEnd() when sessionEnd != null:
+return prepareUpload(_that.sessionId,_that.ip,_that.info,_that.certFingerprint,_that.files,_that.resume);case RsServerEvent_FileUpload() when fileUpload != null:
+return fileUpload(_that.sessionId,_that.fileId,_that.file,_that.offset,_that.resumable);case RsServerEvent_SessionEnd() when sessionEnd != null:
 return sessionEnd(_that.sessionId,_that.reason);case RsServerEvent_PrepareUploadAborted() when prepareUploadAborted != null:
 return prepareUploadAborted(_that.sessionId);case RsServerEvent_CancelReceived() when cancelReceived != null:
 return cancelReceived(_that.ip,_that.sessionId);case RsServerEvent_WebPrepareDownload() when webPrepareDownload != null:
@@ -173,12 +465,12 @@ return listenerFailed(_that.error);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String ip,  RegisterDtoV2 info)  register,required TResult Function( String sessionId,  String ip,  RegisterDtoV2 info,  String? certFingerprint,  Map<String, FileDto> files)  prepareUpload,required TResult Function( String sessionId,  String fileId,  FileDto file)  fileUpload,required TResult Function( String sessionId,  SessionEndReasonV2 reason)  sessionEnd,required TResult Function( String sessionId)  prepareUploadAborted,required TResult Function( String ip,  String sessionId)  cancelReceived,required TResult Function( String ip,  String sessionId,  String? userAgent)  webPrepareDownload,required TResult Function( String sessionId,  String fileId,  FileDto file)  webFileDownload,required TResult Function( List<String> args)  show_,required TResult Function( String error)  listenerFailed,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String ip,  RegisterDtoV2 info)  register,required TResult Function( String sessionId,  String ip,  RegisterDtoV2 info,  String? certFingerprint,  Map<String, FileDto> files,  ShuttleResumeRequest? resume)  prepareUpload,required TResult Function( String sessionId,  String fileId,  FileDto file,  BigInt offset,  bool resumable)  fileUpload,required TResult Function( String sessionId,  SessionEndReasonV2 reason)  sessionEnd,required TResult Function( String sessionId)  prepareUploadAborted,required TResult Function( String ip,  String sessionId)  cancelReceived,required TResult Function( String ip,  String sessionId,  String? userAgent)  webPrepareDownload,required TResult Function( String sessionId,  String fileId,  FileDto file)  webFileDownload,required TResult Function( List<String> args)  show_,required TResult Function( String error)  listenerFailed,}) {final _that = this;
 switch (_that) {
 case RsServerEvent_Register():
 return register(_that.ip,_that.info);case RsServerEvent_PrepareUpload():
-return prepareUpload(_that.sessionId,_that.ip,_that.info,_that.certFingerprint,_that.files);case RsServerEvent_FileUpload():
-return fileUpload(_that.sessionId,_that.fileId,_that.file);case RsServerEvent_SessionEnd():
+return prepareUpload(_that.sessionId,_that.ip,_that.info,_that.certFingerprint,_that.files,_that.resume);case RsServerEvent_FileUpload():
+return fileUpload(_that.sessionId,_that.fileId,_that.file,_that.offset,_that.resumable);case RsServerEvent_SessionEnd():
 return sessionEnd(_that.sessionId,_that.reason);case RsServerEvent_PrepareUploadAborted():
 return prepareUploadAborted(_that.sessionId);case RsServerEvent_CancelReceived():
 return cancelReceived(_that.ip,_that.sessionId);case RsServerEvent_WebPrepareDownload():
@@ -199,12 +491,12 @@ return listenerFailed(_that.error);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String ip,  RegisterDtoV2 info)?  register,TResult? Function( String sessionId,  String ip,  RegisterDtoV2 info,  String? certFingerprint,  Map<String, FileDto> files)?  prepareUpload,TResult? Function( String sessionId,  String fileId,  FileDto file)?  fileUpload,TResult? Function( String sessionId,  SessionEndReasonV2 reason)?  sessionEnd,TResult? Function( String sessionId)?  prepareUploadAborted,TResult? Function( String ip,  String sessionId)?  cancelReceived,TResult? Function( String ip,  String sessionId,  String? userAgent)?  webPrepareDownload,TResult? Function( String sessionId,  String fileId,  FileDto file)?  webFileDownload,TResult? Function( List<String> args)?  show_,TResult? Function( String error)?  listenerFailed,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String ip,  RegisterDtoV2 info)?  register,TResult? Function( String sessionId,  String ip,  RegisterDtoV2 info,  String? certFingerprint,  Map<String, FileDto> files,  ShuttleResumeRequest? resume)?  prepareUpload,TResult? Function( String sessionId,  String fileId,  FileDto file,  BigInt offset,  bool resumable)?  fileUpload,TResult? Function( String sessionId,  SessionEndReasonV2 reason)?  sessionEnd,TResult? Function( String sessionId)?  prepareUploadAborted,TResult? Function( String ip,  String sessionId)?  cancelReceived,TResult? Function( String ip,  String sessionId,  String? userAgent)?  webPrepareDownload,TResult? Function( String sessionId,  String fileId,  FileDto file)?  webFileDownload,TResult? Function( List<String> args)?  show_,TResult? Function( String error)?  listenerFailed,}) {final _that = this;
 switch (_that) {
 case RsServerEvent_Register() when register != null:
 return register(_that.ip,_that.info);case RsServerEvent_PrepareUpload() when prepareUpload != null:
-return prepareUpload(_that.sessionId,_that.ip,_that.info,_that.certFingerprint,_that.files);case RsServerEvent_FileUpload() when fileUpload != null:
-return fileUpload(_that.sessionId,_that.fileId,_that.file);case RsServerEvent_SessionEnd() when sessionEnd != null:
+return prepareUpload(_that.sessionId,_that.ip,_that.info,_that.certFingerprint,_that.files,_that.resume);case RsServerEvent_FileUpload() when fileUpload != null:
+return fileUpload(_that.sessionId,_that.fileId,_that.file,_that.offset,_that.resumable);case RsServerEvent_SessionEnd() when sessionEnd != null:
 return sessionEnd(_that.sessionId,_that.reason);case RsServerEvent_PrepareUploadAborted() when prepareUploadAborted != null:
 return prepareUploadAborted(_that.sessionId);case RsServerEvent_CancelReceived() when cancelReceived != null:
 return cancelReceived(_that.ip,_that.sessionId);case RsServerEvent_WebPrepareDownload() when webPrepareDownload != null:
@@ -291,7 +583,7 @@ as RegisterDtoV2,
 
 
 class RsServerEvent_PrepareUpload extends RsServerEvent {
-  const RsServerEvent_PrepareUpload({required this.sessionId, required this.ip, required this.info, this.certFingerprint, required final  Map<String, FileDto> files}): _files = files,super._();
+  const RsServerEvent_PrepareUpload({required this.sessionId, required this.ip, required this.info, this.certFingerprint, required final  Map<String, FileDto> files, this.resume}): _files = files,super._();
   
 
 /// The session ID the upload session will have when the request is accepted.
@@ -310,6 +602,12 @@ class RsServerEvent_PrepareUpload extends RsServerEvent {
   return EqualUnmodifiableMapView(_files);
 }
 
+/// Shuttle's resume extension, when the sender asked for it (only with
+/// a client certificate). Answer with offsets in
+/// [RsHttpServer::respond_prepare_upload] to let files continue. When
+/// `resume_of` names the session that was active until now, that
+/// session was replaced by this request ([SessionEndReasonV2::Replaced]).
+ final  ShuttleResumeRequest? resume;
 
 /// Create a copy of RsServerEvent
 /// with the given fields replaced by the non-null parameter values.
@@ -321,16 +619,16 @@ $RsServerEvent_PrepareUploadCopyWith<RsServerEvent_PrepareUpload> get copyWith =
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RsServerEvent_PrepareUpload&&(identical(other.sessionId, sessionId) || other.sessionId == sessionId)&&(identical(other.ip, ip) || other.ip == ip)&&(identical(other.info, info) || other.info == info)&&(identical(other.certFingerprint, certFingerprint) || other.certFingerprint == certFingerprint)&&const DeepCollectionEquality().equals(other._files, _files));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RsServerEvent_PrepareUpload&&(identical(other.sessionId, sessionId) || other.sessionId == sessionId)&&(identical(other.ip, ip) || other.ip == ip)&&(identical(other.info, info) || other.info == info)&&(identical(other.certFingerprint, certFingerprint) || other.certFingerprint == certFingerprint)&&const DeepCollectionEquality().equals(other._files, _files)&&(identical(other.resume, resume) || other.resume == resume));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,sessionId,ip,info,certFingerprint,const DeepCollectionEquality().hash(_files));
+int get hashCode => Object.hash(runtimeType,sessionId,ip,info,certFingerprint,const DeepCollectionEquality().hash(_files),resume);
 
 @override
 String toString() {
-  return 'RsServerEvent.prepareUpload(sessionId: $sessionId, ip: $ip, info: $info, certFingerprint: $certFingerprint, files: $files)';
+  return 'RsServerEvent.prepareUpload(sessionId: $sessionId, ip: $ip, info: $info, certFingerprint: $certFingerprint, files: $files, resume: $resume)';
 }
 
 
@@ -341,7 +639,7 @@ abstract mixin class $RsServerEvent_PrepareUploadCopyWith<$Res> implements $RsSe
   factory $RsServerEvent_PrepareUploadCopyWith(RsServerEvent_PrepareUpload value, $Res Function(RsServerEvent_PrepareUpload) _then) = _$RsServerEvent_PrepareUploadCopyWithImpl;
 @useResult
 $Res call({
- String sessionId, String ip, RegisterDtoV2 info, String? certFingerprint, Map<String, FileDto> files
+ String sessionId, String ip, RegisterDtoV2 info, String? certFingerprint, Map<String, FileDto> files, ShuttleResumeRequest? resume
 });
 
 
@@ -358,14 +656,15 @@ class _$RsServerEvent_PrepareUploadCopyWithImpl<$Res>
 
 /// Create a copy of RsServerEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? sessionId = null,Object? ip = null,Object? info = null,Object? certFingerprint = freezed,Object? files = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? sessionId = null,Object? ip = null,Object? info = null,Object? certFingerprint = freezed,Object? files = null,Object? resume = freezed,}) {
   return _then(RsServerEvent_PrepareUpload(
 sessionId: null == sessionId ? _self.sessionId : sessionId // ignore: cast_nullable_to_non_nullable
 as String,ip: null == ip ? _self.ip : ip // ignore: cast_nullable_to_non_nullable
 as String,info: null == info ? _self.info : info // ignore: cast_nullable_to_non_nullable
 as RegisterDtoV2,certFingerprint: freezed == certFingerprint ? _self.certFingerprint : certFingerprint // ignore: cast_nullable_to_non_nullable
 as String?,files: null == files ? _self._files : files // ignore: cast_nullable_to_non_nullable
-as Map<String, FileDto>,
+as Map<String, FileDto>,resume: freezed == resume ? _self.resume : resume // ignore: cast_nullable_to_non_nullable
+as ShuttleResumeRequest?,
   ));
 }
 
@@ -376,12 +675,18 @@ as Map<String, FileDto>,
 
 
 class RsServerEvent_FileUpload extends RsServerEvent {
-  const RsServerEvent_FileUpload({required this.sessionId, required this.fileId, required this.file}): super._();
+  const RsServerEvent_FileUpload({required this.sessionId, required this.fileId, required this.file, required this.offset, required this.resumable}): super._();
   
 
  final  String sessionId;
  final  String fileId;
  final  FileDto file;
+/// Shuttle: the upload continues at this offset: the target must
+/// already hold that many bytes of the file. 0 for the whole file.
+ final  BigInt offset;
+/// Shuttle: the upload can be continued later if it is interrupted;
+/// keep the received part ([RsFileUploadEvent::Saved]).
+ final  bool resumable;
 
 /// Create a copy of RsServerEvent
 /// with the given fields replaced by the non-null parameter values.
@@ -393,16 +698,16 @@ $RsServerEvent_FileUploadCopyWith<RsServerEvent_FileUpload> get copyWith => _$Rs
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RsServerEvent_FileUpload&&(identical(other.sessionId, sessionId) || other.sessionId == sessionId)&&(identical(other.fileId, fileId) || other.fileId == fileId)&&(identical(other.file, file) || other.file == file));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RsServerEvent_FileUpload&&(identical(other.sessionId, sessionId) || other.sessionId == sessionId)&&(identical(other.fileId, fileId) || other.fileId == fileId)&&(identical(other.file, file) || other.file == file)&&(identical(other.offset, offset) || other.offset == offset)&&(identical(other.resumable, resumable) || other.resumable == resumable));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,sessionId,fileId,file);
+int get hashCode => Object.hash(runtimeType,sessionId,fileId,file,offset,resumable);
 
 @override
 String toString() {
-  return 'RsServerEvent.fileUpload(sessionId: $sessionId, fileId: $fileId, file: $file)';
+  return 'RsServerEvent.fileUpload(sessionId: $sessionId, fileId: $fileId, file: $file, offset: $offset, resumable: $resumable)';
 }
 
 
@@ -413,7 +718,7 @@ abstract mixin class $RsServerEvent_FileUploadCopyWith<$Res> implements $RsServe
   factory $RsServerEvent_FileUploadCopyWith(RsServerEvent_FileUpload value, $Res Function(RsServerEvent_FileUpload) _then) = _$RsServerEvent_FileUploadCopyWithImpl;
 @useResult
 $Res call({
- String sessionId, String fileId, FileDto file
+ String sessionId, String fileId, FileDto file, BigInt offset, bool resumable
 });
 
 
@@ -430,12 +735,14 @@ class _$RsServerEvent_FileUploadCopyWithImpl<$Res>
 
 /// Create a copy of RsServerEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? sessionId = null,Object? fileId = null,Object? file = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? sessionId = null,Object? fileId = null,Object? file = null,Object? offset = null,Object? resumable = null,}) {
   return _then(RsServerEvent_FileUpload(
 sessionId: null == sessionId ? _self.sessionId : sessionId // ignore: cast_nullable_to_non_nullable
 as String,fileId: null == fileId ? _self.fileId : fileId // ignore: cast_nullable_to_non_nullable
 as String,file: null == file ? _self.file : file // ignore: cast_nullable_to_non_nullable
-as FileDto,
+as FileDto,offset: null == offset ? _self.offset : offset // ignore: cast_nullable_to_non_nullable
+as BigInt,resumable: null == resumable ? _self.resumable : resumable // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

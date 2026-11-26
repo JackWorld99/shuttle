@@ -7,6 +7,16 @@ import 'package:refena_flutter/refena_flutter.dart';
 
 final httpUploadProvider = ViewProvider((ref) => HttpUploadService());
 
+/// Shuttle: an upload fails when no file content could be sent for this long,
+/// e.g. because the network went away without closing the connection (a lost
+/// Wi-Fi would otherwise only fail it after minutes of TCP retransmissions).
+const uploadStallTimeout = Duration(seconds: 30);
+
+/// Shuttle: an upload that continues at [offset] waits longer at first: the
+/// receiver reads the part it already has back into the checksum before it
+/// takes new data (1 s more per 50 MB, a slow phone's storage).
+Duration uploadStallTimeoutAt(int offset) => uploadStallTimeout + Duration(milliseconds: offset ~/ 50000);
+
 class HttpUploadService {
   const HttpUploadService();
 
@@ -16,6 +26,10 @@ class HttpUploadService {
   /// to a peer other than the one the session was negotiated with. It is
   /// passed in rather than resolved here so that all files of one task share
   /// a connection.
+  ///
+  /// Shuttle: [offset] continues an interrupted upload: only for a file the
+  /// receiver listed in its prepare-upload answer, with that offset or 0
+  /// (`null` for any other receiver). Progress counts from the start of the file.
   Future<void> upload({
     required RsHttpClient client,
     required Stream<List<int>>? stream,
@@ -26,6 +40,7 @@ class HttpUploadService {
     required String? remoteSessionId,
     required String fileId,
     required String token,
+    int? offset,
     required void Function(double progress) onSendProgress,
     required RsCancellationToken cancelToken,
   }) async {
@@ -46,6 +61,8 @@ class HttpUploadService {
           path: path,
           fileDescriptor: fileDescriptor,
           contentLength: BigInt.from(contentLength),
+          offset: offset == null ? null : BigInt.from(offset),
+          stallTimeoutMs: uploadStallTimeoutAt(offset ?? 0).inMilliseconds,
           cancelToken: cancelToken,
         )
         .forEach((event) {

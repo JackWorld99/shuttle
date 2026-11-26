@@ -33,6 +33,15 @@ pub(crate) struct UploadSessionV2 {
     /// The IP address of the sender. Uploads are only accepted from this address.
     pub(crate) sender_ip: PeerIp,
 
+    /// Shuttle: the SHA-256 fingerprint of the sender's client certificate,
+    /// `None` without TLS. Only the same certificate can continue this
+    /// session in a new one after losing the connection.
+    pub(crate) sender_cert: Option<String>,
+
+    /// Shuttle: cancelled when the session is replaced by its continuation,
+    /// which stops the uploads still running for it.
+    pub(crate) abort: CancellationToken,
+
     /// The accepted files, mapped by file ID.
     pub(crate) files: HashMap<String, SessionFileV2>,
 }
@@ -58,6 +67,10 @@ pub(crate) struct SessionFileV2 {
     /// Limits how often a checksum mismatch resets the file to
     /// [FileStatusV2::Pending] for a retry.
     pub(crate) attempts: u8,
+
+    /// Shuttle: `Some` when the upload of this file can be continued (resume
+    /// extension): the only offset other than 0 an upload may start at.
+    pub(crate) resume_offset: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

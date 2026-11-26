@@ -349,6 +349,8 @@ class ServerService extends Notifier<ServerState?> {
         _receiveController.onFileUpload(event);
       case HttpServerFileUploadProgressEvent():
         _receiveController.onFileUploadProgress(event);
+      case HttpServerFilePartialEvent():
+        _receiveController.onFilePartial(event);
       case HttpServerFileUploadResultEvent():
         // ignore: discarded_futures
         _receiveController.onFileUploadResult(event);

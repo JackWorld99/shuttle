@@ -156,7 +156,10 @@ class MainActivity : FlutterActivity() {
 
                 "createFile" -> handleCreateFile(call, result)
 
-                "openFileForWriting" -> handleOpenFileForWriting(call, result)
+                "openFileForWriting" -> handleOpenFileForWriting(call, result, "wt")
+
+                // Shuttle: continue an interrupted upload into a document or pending gallery entry (keeps the content)
+                "openFileForContinuing" -> handleOpenFileForWriting(call, result, "rw")
 
                 // Shuttle: on Android 10+ received images/videos are written straight into a MediaStore (gallery) entry
                 // instead of a cache file that is copied over after the transfer
@@ -367,7 +370,9 @@ class MainActivity : FlutterActivity() {
     ///
     /// Returns an owned writable file descriptor. It stays open after this call
     /// and must be closed by the native consumer it is passed to.
-    private fun handleOpenFileForWriting(call: MethodCall, result: MethodChannel.Result) {
+    /// Opens a content URI for writing with [mode]: "wt" (write + truncate) for a new attempt, or Shuttle's "rw"
+    /// (read + write, content kept) to continue an interrupted upload, whose received part is read back for the checksum.
+    private fun handleOpenFileForWriting(call: MethodCall, result: MethodChannel.Result, mode: String) {
         val uriString = call.argument<String>("uri")
         if (uriString == null) {
             result.error("INVALID_ARGUMENT", "Missing content URI", null)
@@ -383,7 +388,7 @@ class MainActivity : FlutterActivity() {
         try {
             // "wt" is write + truncate. A document provider may ignore the
             // truncation, so the writer additionally shortens the file itself.
-            val parcelFileDescriptor = contentResolver.openFileDescriptor(uri, "wt")
+            val parcelFileDescriptor = contentResolver.openFileDescriptor(uri, mode)
             if (parcelFileDescriptor == null) {
                 result.error("OPEN_FAILED", "The content provider did not return a file descriptor", null)
                 return
@@ -576,21 +581,31 @@ class MainActivity : FlutterActivity() {
     /// Deletes the entries this app left pending before [createdBefore] (seconds since the epoch), e.g. when it
     /// was closed in the middle of a transfer. Only never-published entries of this app in Pictures/ and Movies/,
     /// so only half-received files. Returns how many were deleted.
+    /// Shuttle: entries listed in keepUris stay, they hold the part of a file whose upload can still be continued.
     private fun handleDeletePendingMediaStoreFiles(call: MethodCall, result: MethodChannel.Result) {
         val createdBefore = call.argument<Number>("createdBefore")?.toLong()
         if (createdBefore == null) {
             result.error("INVALID_ARGUMENT", "Missing createdBefore", null)
             return
         }
+        // Compared by ID: the volume name in a stored URI ("external" or "external_primary") may differ from the
+        // collection queried here, the ID of the entry does not.
+        val keepIds = call.argument<List<String>>("keepUris").orEmpty().mapNotNull { uri ->
+            try {
+                ContentUris.parseId(Uri.parse(uri))
+            } catch (e: Exception) {
+                null
+            }
+        }.toSet()
         runMediaStoreCall(result) {
             @SuppressLint("NewApi") // checked by runMediaStoreCall
-            val deleted = deletePendingMediaStoreFiles(createdBefore)
+            val deleted = deletePendingMediaStoreFiles(createdBefore, keepIds)
             deleted
         }
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
-    private fun deletePendingMediaStoreFiles(createdBefore: Long): Int {
+    private fun deletePendingMediaStoreFiles(createdBefore: Long, keepIds: Set<Long>): Int {
         var deleted = 0
         for (isImage in listOf(true, false)) {
             val collection = mediaCollection(isImage)
@@ -611,6 +626,7 @@ class MainActivity : FlutterActivity() {
             }
             val ids = cursor?.use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } } ?: emptyList()
             for (id in ids) {
+                if (id in keepIds) continue
                 if (deleteMediaStoreEntry(ContentUris.withAppendedId(collection, id))) deleted++
             }
         }

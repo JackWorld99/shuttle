@@ -1,5 +1,6 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
+pub use localsend::http::dto::ShuttleResumeRequest;
 pub use localsend::http::dto_v2::RegisterDtoV2;
 use localsend::http::server::ServerConfigV2;
 pub use localsend::http::server::TlsConfig;
@@ -47,6 +48,12 @@ pub enum RsServerEvent {
         /// `None` when the server runs without TLS.
         cert_fingerprint: Option<String>,
         files: HashMap<String, FileDto>,
+        /// Shuttle's resume extension, when the sender asked for it (only with
+        /// a client certificate). Answer with offsets in
+        /// [RsHttpServer::respond_prepare_upload] to let files continue. When
+        /// `resume_of` names the session that was active until now, that
+        /// session was replaced by this request ([SessionEndReasonV2::Replaced]).
+        resume: Option<ShuttleResumeRequest>,
     },
 
     /// An accepted file is being uploaded via `POST /api/localsend/v2/upload`.
@@ -54,6 +61,12 @@ pub enum RsServerEvent {
         session_id: String,
         file_id: String,
         file: FileDto,
+        /// Shuttle: the upload continues at this offset: the target must
+        /// already hold that many bytes of the file. 0 for the whole file.
+        offset: u64,
+        /// Shuttle: the upload can be continued later if it is interrupted;
+        /// keep the received part ([RsFileUploadEvent::Saved]).
+        resumable: bool,
     },
 
     /// An upload session ended.
@@ -107,6 +120,19 @@ pub enum RsServerEvent {
         /// Description of the failure.
         error: String,
     },
+}
+
+/// What [RsHttpServer::respond_file_upload] reports while a file is received.
+#[derive(Clone, Debug)]
+pub enum RsFileUploadEvent {
+    /// The fraction of the file received so far (counting from the start of
+    /// the file, also when the upload continues at an offset).
+    Progress { progress: f64 },
+
+    /// Shuttle: how many bytes of a continuable upload are safely on disk, i.e.
+    /// the offset the upload can be continued from. 0 means nothing of it can
+    /// be continued (checksum mismatch).
+    Saved { bytes: u64 },
 }
 
 pub struct RsHttpServer {
@@ -373,6 +399,7 @@ impl RsHttpServer {
                 info,
                 cert_fingerprint,
                 files,
+                resume,
                 decision_tx,
             } => {
                 *self.pending_decision.lock().await = Some((session_id.clone(), decision_tx));
@@ -382,6 +409,7 @@ impl RsHttpServer {
                     info,
                     cert_fingerprint,
                     files,
+                    resume,
                 })
                 .is_ok()
             }
@@ -389,6 +417,8 @@ impl RsHttpServer {
                 session_id,
                 file_id,
                 file,
+                offset,
+                resumable,
                 target_tx,
             } => {
                 self.pending_uploads
@@ -399,6 +429,8 @@ impl RsHttpServer {
                     session_id,
                     file_id,
                     file,
+                    offset,
+                    resumable,
                 })
                 .is_ok()
             }
@@ -484,17 +516,26 @@ impl RsHttpServer {
     ///
     /// Passing the accepted file IDs (a subset of the offered files) accepts the request.
     /// Passing `None` declines the request.
+    ///
+    /// Shuttle: [resume_offsets] lists the accepted files that can be continued
+    /// if their upload is interrupted, with the offset their upload starts at
+    /// (the bytes already held from an earlier upload of the same file by the
+    /// same sender, or 0). Only used when the request asked for it.
     pub async fn respond_prepare_upload(
         &self,
         accepted_file_ids: Option<Vec<String>>,
+        resume_offsets: Option<HashMap<String, u64>>,
     ) -> anyhow::Result<()> {
         let Some((_, decision_tx)) = self.pending_decision.lock().await.take() else {
             return Err(anyhow::anyhow!("No pending prepare-upload request"));
         };
 
-        let decision = match accepted_file_ids {
-            Some(ids) => PrepareUploadDecisionV2::Accept(ids.into_iter().collect()),
-            None => PrepareUploadDecisionV2::Decline,
+        let decision = match (accepted_file_ids, resume_offsets) {
+            (Some(ids), Some(offsets)) => {
+                PrepareUploadDecisionV2::AcceptWithOffsets(ids.into_iter().collect(), offsets)
+            }
+            (Some(ids), None) => PrepareUploadDecisionV2::Accept(ids.into_iter().collect()),
+            (None, _) => PrepareUploadDecisionV2::Decline,
         };
 
         decision_tx
@@ -514,11 +555,16 @@ impl RsHttpServer {
     /// taking a [StreamSink], so a returned error would become an uncaught
     /// async error killing the calling isolate.
     ///
+    /// Shuttle: for an upload that can be continued, [RsFileUploadEvent::Saved]
+    /// reports how much of the file is safely on disk, the last one before
+    /// the stream ends. For an upload that continues at an offset, a file
+    /// descriptor must be opened for reading and writing ("rw").
+    ///
     /// Timestamps provided in the sender's file metadata are applied to the
     /// written file by the server.
     pub async fn respond_file_upload(
         &self,
-        sink: StreamSink<f64>,
+        sink: StreamSink<RsFileUploadEvent>,
         session_id: String,
         file_id: String,
         path: Option<String>,
@@ -555,18 +601,34 @@ impl RsHttpServer {
                     } else {
                         (written as f64 / file_size as f64).min(1.0)
                     };
-                    let _ = progress_sink.add(progress);
+                    let _ = progress_sink.add(RsFileUploadEvent::Progress { progress });
                 }
             });
 
-            let (result_tx, result_rx) = oneshot::channel::<Result<(), String>>();
-            let target = resolve_upload_target(path, file_descriptor, result_tx, progress_tx)?;
+            let (result_tx, mut result_rx) = oneshot::channel::<Result<(), String>>();
+            let (saved_tx, mut saved_rx) = mpsc::unbounded_channel::<u64>();
+            let target =
+                resolve_upload_target(path, file_descriptor, result_tx, progress_tx, saved_tx)?;
 
             target_tx
                 .send(target)
                 .map_err(|_| anyhow::anyhow!("Upload request already ended"))?;
 
-            match result_rx.await {
+            let result = loop {
+                tokio::select! {
+                    biased;
+                    Some(bytes) = saved_rx.recv() => {
+                        let _ = sink.add(RsFileUploadEvent::Saved { bytes });
+                    }
+                    result = &mut result_rx => break result,
+                }
+            };
+            // The server reports what it saved before the result.
+            while let Ok(bytes) = saved_rx.try_recv() {
+                let _ = sink.add(RsFileUploadEvent::Saved { bytes });
+            }
+
+            match result {
                 Ok(Ok(())) => Ok(()),
                 Ok(Err(err)) => Err(anyhow::anyhow!(err)),
                 Err(_) => Err(anyhow::anyhow!("Upload request aborted")),
@@ -705,12 +767,14 @@ fn resolve_upload_target(
     file_descriptor: Option<i32>,
     result_tx: oneshot::Sender<Result<(), String>>,
     progress_tx: mpsc::Sender<u64>,
+    saved_tx: mpsc::UnboundedSender<u64>,
 ) -> anyhow::Result<FileUploadTarget> {
     match (path, file_descriptor) {
         (Some(path), None) => Ok(FileUploadTarget::Path {
             path: path.into(),
             result_tx,
             progress_tx: Some(progress_tx),
+            saved_tx: Some(saved_tx),
         }),
         (None, Some(file_descriptor)) => {
             #[cfg(target_os = "android")]
@@ -719,11 +783,12 @@ fn resolve_upload_target(
                     fd: file_descriptor,
                     result_tx,
                     progress_tx: Some(progress_tx),
+                    saved_tx: Some(saved_tx),
                 })
             }
             #[cfg(not(target_os = "android"))]
             {
-                let _ = (file_descriptor, result_tx, progress_tx);
+                let _ = (file_descriptor, result_tx, progress_tx, saved_tx);
                 Err(anyhow::anyhow!(
                     "File descriptors are only supported on Android"
                 ))
@@ -804,4 +869,5 @@ pub struct _RegisterDtoV2 {
 pub enum _SessionEndReasonV2 {
     Finished,
     Cancelled,
+    Replaced,
 }

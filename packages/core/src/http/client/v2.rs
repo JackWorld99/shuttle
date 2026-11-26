@@ -249,17 +249,50 @@ impl LsHttpClientV2 {
         body: reqwest::Body,
         cancel: CancellationToken,
     ) -> Result<(), ClientError> {
+        self.upload_from(
+            protocol, ip, port, public_key, session_id, file_id, token, None, body, cancel,
+        )
+        .await
+    }
+
+    /// Like [LsHttpClientV2::upload], with Shuttle's resume extension:
+    /// `offset` (sent as the `offset` query parameter) is where the file
+    /// content in `body` starts. Only pass `Some` for a file the receiver
+    /// listed in `shuttleResume` of its prepare-upload answer, with exactly
+    /// that offset or 0; other receivers would store the body as the whole file.
+    ///
+    /// # Errors
+    /// Like [LsHttpClientV2::upload], plus 409 when the receiver cannot
+    /// continue at `offset` (upload the whole file instead).
+    pub async fn upload_from(
+        &self,
+        protocol: ProtocolType,
+        ip: &str,
+        port: u16,
+        public_key: Option<String>,
+        session_id: &str,
+        file_id: &str,
+        token: &str,
+        offset: Option<u64>,
+        body: reqwest::Body,
+        cancel: CancellationToken,
+    ) -> Result<(), ClientError> {
+        let offset = offset.map(|offset| offset.to_string());
+        let mut params = vec![
+            ("sessionId", session_id),
+            ("fileId", file_id),
+            ("token", token),
+        ];
+        if let Some(offset) = &offset {
+            params.push(("offset", offset.as_str()));
+        }
         let url = TargetUrl {
             version: ApiVersion::V2,
             protocol: protocol.as_str(),
             host: ip.to_string(),
             port,
             path: "/upload",
-            params: &[
-                ("sessionId", session_id),
-                ("fileId", file_id),
-                ("token", token),
-            ],
+            params: &params,
         }
         .to_string();
 

@@ -52,6 +52,10 @@ libc = "0.2"
 name = "stress_send"
 required-features = ["http"]
 
+[[example]]
+name = "resume_send"
+required-features = ["http"]
+
 [features]
 default = []
 crypto = ["ed25519-dalek", "rcgen", "rsa", "sha2", "tokio-util"]
