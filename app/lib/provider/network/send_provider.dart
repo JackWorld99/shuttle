@@ -15,6 +15,7 @@ import 'package:localsend_app/provider/file_transfer_provider.dart';
 import 'package:localsend_app/provider/http_provider.dart';
 import 'package:localsend_app/provider/network/nearby_devices_provider.dart' show isInsecureTrustedDevice;
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
+import 'package:localsend_app/provider/send_queue_provider.dart' show QueueSendResult;
 import 'package:localsend_app/provider/sent_history_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/message_preview.dart';
@@ -42,6 +43,9 @@ import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
 final _logger = Logger('Send');
+
+/// Shuttle: why a send from the queue stopped when the receiver asks for a PIN (the queue never asks for one in the background)
+String get needsPinMessage => t.shareme.queue.needsPin;
 
 /// This provider manages sending files to other devices.
 ///
@@ -87,23 +91,65 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     }).toString();
   }
 
-  /// Starts a session.
+  /// Shuttle: sessions whose end result is kept for [takeResult] (the send queue reads how its sends ended, also when the session
+  /// closed itself, e.g. a successful background send)
+  final _tracked = <String>{};
+  final _results = <String, QueueSendResult>{};
+
+  /// Starts a session and returns its ID once it is over (or waits for the user on a page).
   /// If [background] is true, then the session closes itself on success and no pages will be open
   /// If [background] is false, then this method will open pages by itself and waits for user input to close the session.
-  Future<void> startSession({
+  ///
+  /// Shuttle: [sessionId] and [fileIds] let the send queue pick the IDs (to match files back to its entries); with [askPin] false a
+  /// receiver that wants a PIN ends the send with [needsPinMessage] instead of opening the PIN dialog (no dialog popping up hours later).
+  Future<String> startSession({
     required Device target,
     required List<CrossFile> files,
     required bool background,
+    String? sessionId,
+    List<String>? fileIds,
+    bool askPin = true,
+  }) async {
+    final id = sessionId ?? _uuid.v4();
+    await _startSession(sessionId: id, target: target, files: files, background: background, fileIds: fileIds, askPin: askPin);
+    return id;
+  }
+
+  /// Keeps the end result of [sessionId] for [takeResult]. Call before [startSession].
+  void trackResult(String sessionId) => _tracked.add(sessionId);
+
+  /// The end result of a session passed to [trackResult]: its last state and file statuses, whether it is still open or was closed
+  /// (by itself, a page or the user). Stops tracking it.
+  QueueSendResult? takeResult(String sessionId) {
+    _tracked.remove(sessionId);
+    final closed = _results.remove(sessionId);
+    final open = state[sessionId];
+    if (open == null) return closed;
+    final transfers = ref.read(fileTransferProvider);
+    return QueueSendResult(
+      state: open,
+      statuses: {for (final id in open.files.keys) id: transfers.getStatus(sessionId: sessionId, fileId: id)},
+    );
+  }
+
+  Future<void> _startSession({
+    required String sessionId,
+    required Device target,
+    required List<CrossFile> files,
+    required bool background,
+    required List<String>? fileIds,
+    required bool askPin,
   }) async {
     // Pinned to the device the user picked, so the request is not sent at all
     // if someone else answers on that address.
     final client = ref.read(httpProvider).pinnedTo(target.fingerprint);
-    final sessionId = _uuid.v4();
     final createChecksums = ref.read(settingsProvider).createChecksums;
 
     // The ids are assigned upfront, so the checksums calculated below
     // can be mapped back to the corresponding file.
-    final selectedFiles = files.map((file) => (id: _uuid.v4(), file: file)).toList();
+    final selectedFiles = [
+      for (final (i, file) in files.indexed) (id: fileIds != null && i < fileIds.length ? fileIds[i] : _uuid.v4(), file: file),
+    ];
 
     state = state.updateSession(
       sessionId: sessionId,
@@ -292,6 +338,14 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
         } on rust_http.RsHttpClientError_StatusCode catch (e) {
           switch (e.status) {
             case 401:
+              if (!askPin) {
+                // Shuttle: a send from the queue runs unattended, so don't open the PIN dialog at some random later moment
+                state = state.updateSession(
+                  sessionId: sessionId,
+                  state: (s) => s?.copyWith(status: SessionStatus.finishedWithErrors, errorMessage: needsPinMessage),
+                );
+                return;
+              }
               invalidPin = true;
 
               // wait until animation is finished
@@ -564,7 +618,12 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     } else {
       final hasError = ref.read(fileTransferProvider).getStatuses(sessionId).any((status) => status == FileStatus.failed);
       if (!hasError && sessionState.background == true) {
-        // close session because everything is fine and it is in background
+        // close session because everything is fine and it is in background.
+        // Shuttle: marked finished first, otherwise the history recorded it as "you canceled" (closed while still sending)
+        state = state.updateSession(
+          sessionId: sessionId,
+          state: (s) => s?.copyWith(status: SessionStatus.finished, endTime: DateTime.now().millisecondsSinceEpoch),
+        );
         closeSession(sessionId);
         _logger.info('Transfer finished and session removed.');
       } else {
@@ -826,8 +885,10 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     }
   }
 
-  /// Closes the session
-  void closeSession(String sessionId) {
+  /// Closes the session.
+  /// Shuttle: [recordHistory] false leaves it out of the sent history (an attempt whose content stays in the send queue: the
+  /// attempt that finally delivers it is recorded).
+  void closeSession(String sessionId, {bool recordHistory = true}) {
     final sessionState = state[sessionId];
     if (sessionState == null) {
       return;
@@ -835,7 +896,14 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     TransferNotification.stop(sessionId);
     _hashCancelTokens.remove(sessionId)?.cancel();
     _prepareUploadCancelTokens.remove(sessionId)?.cancel();
-    _recordSentHistory(sessionState); // Shuttle: must run before the session (and its file statuses) is removed
+    if (_tracked.contains(sessionId)) {
+      final transfers = ref.read(fileTransferProvider);
+      _results[sessionId] = QueueSendResult(
+        state: sessionState,
+        statuses: {for (final id in sessionState.files.keys) id: transfers.getStatus(sessionId: sessionId, fileId: id)},
+      );
+    }
+    if (recordHistory) _recordSentHistory(sessionState); // Shuttle: must run before the session (and its file statuses) is removed
     state = state.removeSession(ref, sessionId);
     if (sessionState.status == SessionStatus.finished && ref.read(settingsProvider).sendMode == SendMode.single) {
       // clear selected files

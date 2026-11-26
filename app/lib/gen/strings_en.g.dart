@@ -88,6 +88,7 @@ class Translations$shareme$en {
   late final Translations$shareme$home$en home = Translations$shareme$home$en.internal(_root);
   late final Translations$shareme$safety$en safety = Translations$shareme$safety$en.internal(_root);
   late final Translations$shareme$send$en send = Translations$shareme$send$en.internal(_root);
+  late final Translations$shareme$queue$en queue = Translations$shareme$queue$en.internal(_root);
   late final Translations$shareme$text$en text = Translations$shareme$text$en.internal(_root);
   late final Translations$shareme$receive$en receive = Translations$shareme$receive$en.internal(_root);
   late final Translations$shareme$history$en history = Translations$shareme$history$en.internal(_root);
@@ -1165,6 +1166,13 @@ class Translations$shareme$home$en {
   /// en: 'Text'
   String get text => 'Text';
 
+  /// en: '(one) {1 waiting} (other) {{n} waiting}'
+  String queued({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 waiting',
+    other: '${n} waiting',
+  );
+
   /// en: '(one) {1 item} (other) {{n} items}'
   String edgeCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
     n,
@@ -1230,6 +1238,12 @@ class Translations$shareme$send$en {
 
   /// en: 'Offline · can send once it's online'
   String get offlineCannot => 'Offline · can send once it\'s online';
+
+  /// en: 'Offline · goes out when it's back'
+  String get offlineQueue => 'Offline · goes out when it\'s back';
+
+  /// en: 'Send when {name} is back'
+  String queueTo({required Object name}) => 'Send when ${name} is back';
 
   /// en: 'Needs approval'
   String get nearbyNeedsApproval => 'Needs approval';
@@ -1389,6 +1403,132 @@ class Translations$shareme$send$en {
   );
 }
 
+// Path: shareme.queue
+class Translations$shareme$queue$en {
+  Translations$shareme$queue$en.internal(this._root);
+
+  final Translations _root; // ignore: unused_field
+
+  // Translations
+
+  /// en: 'Waiting for {name}'
+  String title({required Object name}) => 'Waiting for ${name}';
+
+  /// en: '{name} is offline. These go out as soon as it's back.'
+  String offline({required Object name}) => '${name} is offline. These go out as soon as it\'s back.';
+
+  /// en: '{name} is offline. Pick something and it goes out as soon as {name} is back.'
+  String empty({required Object name}) => '${name} is offline. Pick something and it goes out as soon as ${name} is back.';
+
+  /// en: 'Connected remotely. Batches over 50 MB wait for the same Wi-Fi.'
+  String get holdLan => 'Connected remotely. Batches over 50 MB wait for the same Wi-Fi.';
+
+  /// en: 'Can't reach it right now. Trying again shortly.'
+  String get retrying => 'Can\'t reach it right now. Trying again shortly.';
+
+  /// en: '{name} is online. Sending soon.'
+  String online({required Object name}) => '${name} is online. Sending soon.';
+
+  /// en: 'Sending'
+  String get sending => 'Sending';
+
+  /// en: 'Waiting'
+  String get waiting => 'Waiting';
+
+  /// en: 'queued {time}'
+  String queuedAgo({required Object time}) => 'queued ${time}';
+
+  /// en: 'Text'
+  String get textItem => 'Text';
+
+  /// en: 'Link'
+  String get linkItem => 'Link';
+
+  /// en: '{name} and others ({n} items)'
+  String more({required Object name, required Object n}) => '${name} and others (${n} items)';
+
+  /// en: 'Cancel'
+  String get cancel => 'Cancel';
+
+  /// en: 'Cancel all'
+  String get cancelAll => 'Cancel all';
+
+  /// en: 'Try now'
+  String get tryNow => 'Try now';
+
+  /// en: 'Send now'
+  String get sendNow => 'Send now';
+
+  /// en: 'Add more'
+  String get addMore => 'Add more';
+
+  /// en: 'Pick something'
+  String get pick => 'Pick something';
+
+  /// en: 'Queued. It goes to {name} as soon as it's back'
+  String added({required Object name}) => 'Queued. It goes to ${name} as soon as it\'s back';
+
+  /// en: 'Undo'
+  String get undo => 'Undo';
+
+  /// en: '50 batches already wait for {name}. Cancel some first'
+  String full({required Object name}) => '50 batches already wait for ${name}. Cancel some first';
+
+  /// en: 'Queued copies would exceed 2 GB. Cancel some first'
+  String get tooLarge => 'Queued copies would exceed 2 GB. Cancel some first';
+
+  /// en: 'Queued text sent to {name}'
+  String sentTextSnack({required Object name}) => 'Queued text sent to ${name}';
+
+  /// en: 'It asks for a PIN, so queued items can't go out by themselves. Send it yourself once.'
+  String get needsPin => 'It asks for a PIN, so queued items can\'t go out by themselves. Send it yourself once.';
+
+  /// en: 'Can't reach {name}'
+  String cantReach({required Object name}) => 'Can\'t reach ${name}';
+
+  /// en: '{name} is receiving something else'
+  String busyTitle({required Object name}) => '${name} is receiving something else';
+
+  /// en: 'Queued. It goes out as soon as {name} is back.'
+  String pageQueued({required Object name}) => 'Queued. It goes out as soon as ${name} is back.';
+
+  /// en: 'Queued. It goes out as soon as {name} is free.'
+  String pageBusyQueued({required Object name}) => 'Queued. It goes out as soon as ${name} is free.';
+
+  /// en: 'Still queued. Trying again when {name} is back.'
+  String stillQueued({required Object name}) => 'Still queued. Trying again when ${name} is back.';
+
+  /// en: 'Queuing…'
+  String get queuing => 'Queuing…';
+
+  /// en: 'Remove from queue'
+  String get cancelQueued => 'Remove from queue';
+
+  /// en: 'OK'
+  String get ok => 'OK';
+
+  /// en: '(one) {1 queued item sent to {name}} (other) {{n} queued items sent to {name}}'
+  String sentSnack({required num n, required Object name}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 queued item sent to ${name}',
+    other: '${n} queued items sent to ${name}',
+  );
+
+  /// en: '(one) {1 queued item was gone and not sent to {name}} (other) {{n} queued items were gone and not sent to {name}}'
+  String missingSnack({required num n, required Object name}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 queued item was gone and not sent to ${name}',
+    other: '${n} queued items were gone and not sent to ${name}',
+  );
+
+  /// en: '(one) {1 item gone} (other) {{n} items gone}'
+  String missingShort({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(
+    n,
+    one: '1 item gone',
+    other: '${n} items gone',
+  );
+}
+
 // Path: shareme.text
 class Translations$shareme$text$en {
   Translations$shareme$text$en.internal(this._root);
@@ -1411,6 +1551,12 @@ class Translations$shareme$text$en {
 
   /// en: 'Link from {name}'
   String snackLink({required Object name}) => 'Link from ${name}';
+
+  /// en: 'Text from {name} (queued earlier)'
+  String snackLateText({required Object name}) => 'Text from ${name} (queued earlier)';
+
+  /// en: 'Link from {name} (queued earlier)'
+  String snackLateLink({required Object name}) => 'Link from ${name} (queued earlier)';
 
   /// en: 'View'
   String get snackView => 'View';
@@ -1709,6 +1855,12 @@ class Translations$shareme$history$en {
 
   /// en: 'error'
   String get reasonError => 'error';
+
+  /// en: 'waited 7 days, never delivered'
+  String get reasonExpired => 'waited 7 days, never delivered';
+
+  /// en: 'the files were gone'
+  String get reasonMissing => 'the files were gone';
 
   /// en: 'Nothing sent or received yet'
   String get emptyTitle => 'Nothing sent or received yet';

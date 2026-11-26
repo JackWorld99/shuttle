@@ -242,7 +242,8 @@ class _SmMessageViewState extends State<SmMessageView> {
 
 /// Text from my devices is already copied automatically, so only a snack bar shows at the bottom for a few seconds.
 /// "View" opens the full text; for a URL (http / https only) the button is "Open", and the browser is used only once the user taps it.
-void showReceivedTextSnack({required String alias, required String message, required String senderFingerprint}) {
+/// [late]: the text waited in the sender's send queue and was not copied automatically; the button copies it then.
+void showReceivedTextSnack({required String alias, required String message, required String senderFingerprint, bool late = false}) {
   final context = Routerino.context;
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
@@ -257,7 +258,11 @@ void showReceivedTextSnack({required String alias, required String message, requ
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              isLink ? t.shareme.text.snackLink(name: alias) : t.shareme.text.snackCopied(name: alias),
+              late
+                  ? (isLink ? t.shareme.text.snackLateLink(name: alias) : t.shareme.text.snackLateText(name: alias))
+                  : isLink
+                  ? t.shareme.text.snackLink(name: alias)
+                  : t.shareme.text.snackCopied(name: alias),
               style: ShareMeText.body.copyWith(color: const Color(0xFFF3F3F1), fontWeight: FontWeight.w600),
             ),
             Text(
@@ -269,8 +274,12 @@ void showReceivedTextSnack({required String alias, required String message, requ
           ],
         ),
         action: SnackBarAction(
-          label: isLink ? t.shareme.text.snackOpen : t.shareme.text.snackView,
+          label: late ? t.shareme.text.copy : (isLink ? t.shareme.text.snackOpen : t.shareme.text.snackView),
           onPressed: () async {
+            if (late) {
+              await Clipboard.setData(ClipboardData(text: message));
+              return;
+            }
             final url = isLink ? Uri.tryParse(message.trim()) : null;
             if (url != null) {
               await launchUrl(url, mode: LaunchMode.externalApplication);

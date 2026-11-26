@@ -63,6 +63,10 @@
       "dropActiveTo": "Release to send to {name}",
       "file": "Files",
       "text": "Text",
+      "queued(plural)": {
+        "one": "1 waiting",
+        "other": "{n} waiting"
+      },
       "edgeCount(plural)": {
         "one": "1 item",
         "other": "{n} items"
@@ -88,6 +92,8 @@
       "keepGoing": "Keep going",
       "shareLink": "No Shuttle there? Share a link",
       "offlineCannot": "Offline · can send once it's online",
+      "offlineQueue": "Offline · goes out when it's back",
+      "queueTo": "Send when {name} is back",
       "nearbyNeedsApproval": "Needs approval",
       "noDevices": "No devices found nearby yet. Make sure both devices are on the same Wi-Fi.",
       "sendTo": "Send to {name}",
@@ -146,12 +152,60 @@
         "other": "{n} files were not sent"
       }
     },
+    "queue": {
+      "title": "Waiting for {name}",
+      "offline": "{name} is offline. These go out as soon as it's back.",
+      "empty": "{name} is offline. Pick something and it goes out as soon as {name} is back.",
+      "holdLan": "Connected remotely. Batches over 50 MB wait for the same Wi-Fi.",
+      "retrying": "Can't reach it right now. Trying again shortly.",
+      "online": "{name} is online. Sending soon.",
+      "sending": "Sending",
+      "waiting": "Waiting",
+      "queuedAgo": "queued {time}",
+      "textItem": "Text",
+      "linkItem": "Link",
+      "more": "{name} and others ({n} items)",
+      "cancel": "Cancel",
+      "cancelAll": "Cancel all",
+      "tryNow": "Try now",
+      "sendNow": "Send now",
+      "addMore": "Add more",
+      "pick": "Pick something",
+      "added": "Queued. It goes to {name} as soon as it's back",
+      "undo": "Undo",
+      "full": "50 batches already wait for {name}. Cancel some first",
+      "tooLarge": "Queued copies would exceed 2 GB. Cancel some first",
+      "sentTextSnack": "Queued text sent to {name}",
+      "needsPin": "It asks for a PIN, so queued items can't go out by themselves. Send it yourself once.",
+      "cantReach": "Can't reach {name}",
+      "busyTitle": "{name} is receiving something else",
+      "pageQueued": "Queued. It goes out as soon as {name} is back.",
+      "pageBusyQueued": "Queued. It goes out as soon as {name} is free.",
+      "stillQueued": "Still queued. Trying again when {name} is back.",
+      "queuing": "Queuing…",
+      "cancelQueued": "Remove from queue",
+      "ok": "OK",
+      "sentSnack(plural)": {
+        "one": "1 queued item sent to {name}",
+        "other": "{n} queued items sent to {name}"
+      },
+      "missingSnack(plural)": {
+        "one": "1 queued item was gone and not sent to {name}",
+        "other": "{n} queued items were gone and not sent to {name}"
+      },
+      "missingShort(plural)": {
+        "one": "1 item gone",
+        "other": "{n} items gone"
+      }
+    },
     "text": {
       "sheetTitle": "Send text or a link",
       "clipTray": "Send clipboard to my device",
       "clipEmpty": "The clipboard is empty",
       "snackCopied": "Copied, from {name}",
       "snackLink": "Link from {name}",
+      "snackLateText": "Text from {name} (queued earlier)",
+      "snackLateLink": "Link from {name} (queued earlier)",
       "snackView": "View",
       "snackOpen": "Open",
       "autoCopied": "From My devices, copied automatically",
@@ -264,6 +318,8 @@
       "reasonBusy": "receiver busy",
       "reasonPin": "too many wrong PINs",
       "reasonError": "error",
+      "reasonExpired": "waited 7 days, never delivered",
+      "reasonMissing": "the files were gone",
       "emptyTitle": "Nothing sent or received yet",
       "emptyBody": "Everything you receive and send shows up here.",
       "emptyAction": "Send photos & videos",

@@ -15,7 +15,8 @@ import 'package:refena_flutter/refena_flutter.dart';
 /// "Send to" sheet.
 ///
 /// - Online "My devices" come first; if only one is online it is selected by default.
-/// - Offline "My devices" are shown but can't be selected.
+/// - Offline "My devices" can be selected too: the content then waits in the send queue until the device is back.
+///   The returned device has the address it was last seen at; callers check whether it is online (see chooseTargetAndSend).
 /// - Nearby unpaired devices can be selected but are marked as needing approval.
 ///
 /// Returns the selected device, or null when the user dismisses the sheet.
@@ -56,7 +57,8 @@ class _SendTargetSheetState extends State<_SendTargetSheet> {
     final vm = context.watch(sendTabVmProvider);
     // Preselect the default target (see defaultSendTarget); once the user has picked one, leave it alone
     if (!_userChose && _selected == null) _selected = defaultSendTarget(vm, lastTarget: lastSendTarget(context.ref));
-    final selectedDevice = sendTargetDevice(vm, _selected);
+    final selectedDevice = sendTargetDevice(vm, _selected) ?? offlineMineTarget(vm, _selected);
+    final queued = selectedDevice != null && sendTargetDevice(vm, _selected) == null;
 
     return SafeArea(
       child: Padding(
@@ -93,7 +95,11 @@ class _SendTargetSheetState extends State<_SendTargetSheet> {
               ),
             ),
             const SizedBox(height: 14),
-            SendToButton(device: selectedDevice, onPressed: () => Navigator.of(context).pop(selectedDevice)),
+            SendToButton(
+              device: selectedDevice,
+              label: queued ? t.shareme.send.queueTo(name: selectedDevice.alias) : null,
+              onPressed: () => Navigator.of(context).pop(selectedDevice),
+            ),
             if (widget.onShareLink != null)
               TextButton(
                 onPressed: () {
@@ -131,8 +137,29 @@ Future<void> rememberSendTarget(Ref ref, String fingerprint) => ref.read(persist
 Device? sendTargetDevice(SendTabVm vm, String? fingerprint) =>
     fingerprint == null ? null : vm.nearbyDevices.firstWhereOrNull((d) => d.fingerprint == fingerprint);
 
+/// Shuttle send queue: an offline "my device" as a target, from what "My devices" remembers about it (null for other devices).
+/// Content for it waits in the send queue, which sends it to whatever address the device turns up at.
+Device? offlineMineTarget(SendTabVm vm, String? fingerprint) {
+  final f = fingerprint == null ? null : vm.favoriteDevices.firstWhereOrNull((f) => f.fingerprint == fingerprint);
+  if (f == null) return null;
+  return Device(
+    signalingId: null,
+    ip: f.ip,
+    version: '',
+    port: f.port,
+    https: true,
+    fingerprint: f.fingerprint,
+    alias: f.alias,
+    deviceModel: null,
+    deviceType: knownDeviceType(f.fingerprint) ?? DeviceType.mobile,
+    download: false,
+    channels: const [],
+  );
+}
+
 /// "Send to" list (shared by the send-files sheet and the send-text sheet): online "My devices" first;
-/// offline ones are shown but can't be selected; nearby unpaired devices can be selected and are marked as needing approval.
+/// offline ones can be selected and say the content goes out once they are back (send queue); nearby unpaired devices can be
+/// selected and are marked as needing approval.
 class SendTargetList extends StatelessWidget {
   final String? selected;
   final ValueChanged<String> onSelect;
@@ -169,10 +196,11 @@ class SendTargetList extends StatelessWidget {
         _TargetRow(
           seal: DeviceAvatar(deviceType: knownDeviceType(f.fingerprint), size: 40, mine: true, offline: true),
           name: f.alias,
-          status: t.shareme.send.offlineCannot,
+          status: t.shareme.send.offlineQueue,
           value: f.fingerprint,
           groupValue: selected,
-          onChanged: null,
+          onChanged: onSelect,
+          dimmed: true,
         ),
       for (final d in nearby.where((d) => !favoriteFingerprints.contains(d.fingerprint)))
         _TargetRow(
@@ -251,6 +279,9 @@ class _TargetRow extends StatelessWidget {
   final String? groupValue;
   final ValueChanged<String>? onChanged;
 
+  /// Offline: the name is grayed out, but it can still be picked (send queue)
+  final bool dimmed;
+
   const _TargetRow({
     required this.seal,
     required this.name,
@@ -259,6 +290,7 @@ class _TargetRow extends StatelessWidget {
     required this.groupValue,
     required this.onChanged,
     this.okStatus = false,
+    this.dimmed = false,
   });
 
   @override
@@ -284,7 +316,7 @@ class _TargetRow extends StatelessWidget {
                   children: [
                     Text(
                       name,
-                      style: ShareMeText.deviceNameSm.copyWith(color: enabled ? c.ink : c.ink3),
+                      style: ShareMeText.deviceNameSm.copyWith(color: enabled && !dimmed ? c.ink : c.ink3),
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(

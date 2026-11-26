@@ -117,6 +117,8 @@ class Translations$shareme$zh_CN extends Translations$shareme$en {
   @override
   late final Translations$shareme$send$zh_CN send = Translations$shareme$send$zh_CN.internal(_root);
   @override
+  late final Translations$shareme$queue$zh_CN queue = Translations$shareme$queue$zh_CN.internal(_root);
+  @override
   late final Translations$shareme$text$zh_CN text = Translations$shareme$text$zh_CN.internal(_root);
   @override
   late final Translations$shareme$receive$zh_CN receive = Translations$shareme$receive$zh_CN.internal(_root);
@@ -1013,6 +1015,11 @@ class Translations$shareme$home$zh_CN extends Translations$shareme$home$en {
   @override
   String get text => '文字';
   @override
+  String queued({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 项待发',
+  );
+  @override
   String edgeCount({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
     n,
     other: '${n} 项',
@@ -1063,6 +1070,10 @@ class Translations$shareme$send$zh_CN extends Translations$shareme$send$en {
   String get shareLink => '对方没装 Shuttle？用链接发';
   @override
   String get offlineCannot => '不在线 · 上线后才能发';
+  @override
+  String get offlineQueue => '不在线 · 上线后自动发';
+  @override
+  String queueTo({required Object name}) => '上线后发给 ${name}';
   @override
   String get nearbyNeedsApproval => '要对方确认';
   @override
@@ -1170,6 +1181,94 @@ class Translations$shareme$send$zh_CN extends Translations$shareme$send$en {
   );
 }
 
+// Path: shareme.queue
+class Translations$shareme$queue$zh_CN extends Translations$shareme$queue$en {
+  Translations$shareme$queue$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
+
+  final TranslationsZhCn _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String title({required Object name}) => '待发给 ${name}';
+  @override
+  String offline({required Object name}) => '${name} 现在不在线，上线后自动发。';
+  @override
+  String empty({required Object name}) => '${name} 现在不在线。选好要发的，它上线后自动发过去。';
+  @override
+  String get holdLan => '现在是远程连着。超过 50 MB 的等回到同一个 WiFi 再发。';
+  @override
+  String get retrying => '暂时连不上，过一会儿自动再试。';
+  @override
+  String online({required Object name}) => '${name} 在线，马上就发。';
+  @override
+  String get sending => '正在发';
+  @override
+  String get waiting => '等待';
+  @override
+  String queuedAgo({required Object time}) => '${time}放进来';
+  @override
+  String get textItem => '文字';
+  @override
+  String get linkItem => '链接';
+  @override
+  String more({required Object name, required Object n}) => '${name} 等 ${n} 项';
+  @override
+  String get cancel => '取消';
+  @override
+  String get cancelAll => '全部取消';
+  @override
+  String get tryNow => '现在试一次';
+  @override
+  String get sendNow => '现在发';
+  @override
+  String get addMore => '再加一些';
+  @override
+  String get pick => '选要发的';
+  @override
+  String added({required Object name}) => '已放进待发，${name} 上线后自动发';
+  @override
+  String get undo => '撤销';
+  @override
+  String full({required Object name}) => '给 ${name} 的待发已经有 50 批了，先取消一些';
+  @override
+  String get tooLarge => '待发里存的副本会超过 2 GB，先取消一些';
+  @override
+  String sentTextSnack({required Object name}) => '待发的文字已发给 ${name}';
+  @override
+  String get needsPin => '对方要输入 PIN，待发的不能自动发。请手动发一次。';
+  @override
+  String cantReach({required Object name}) => '连不上 ${name}';
+  @override
+  String busyTitle({required Object name}) => '${name} 正在接收别的文件';
+  @override
+  String pageQueued({required Object name}) => '已放进待发，${name} 上线后自动发。';
+  @override
+  String pageBusyQueued({required Object name}) => '已放进待发，${name} 空下来就自动发。';
+  @override
+  String stillQueued({required Object name}) => '还在待发里，${name} 上线后自动再试。';
+  @override
+  String get queuing => '正在放进待发…';
+  @override
+  String get cancelQueued => '取消待发';
+  @override
+  String get ok => '好';
+  @override
+  String sentSnack({required num n, required Object name}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '待发的 ${n} 项已发给 ${name}',
+  );
+  @override
+  String missingSnack({required num n, required Object name}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '有 ${n} 项找不到了，没发给 ${name}',
+  );
+  @override
+  String missingShort({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('zh'))(
+    n,
+    other: '${n} 项找不到了',
+  );
+}
+
 // Path: shareme.text
 class Translations$shareme$text$zh_CN extends Translations$shareme$text$en {
   Translations$shareme$text$zh_CN.internal(TranslationsZhCn root) : this._root = root, super.internal(root);
@@ -1187,6 +1286,10 @@ class Translations$shareme$text$zh_CN extends Translations$shareme$text$en {
   String snackCopied({required Object name}) => '已复制，来自 ${name}';
   @override
   String snackLink({required Object name}) => '${name} 发来一个链接';
+  @override
+  String snackLateText({required Object name}) => '${name} 发来一段文字（之前排队的）';
+  @override
+  String snackLateLink({required Object name}) => '${name} 发来一个链接（之前排队的）';
   @override
   String get snackView => '查看';
   @override
@@ -1394,6 +1497,10 @@ class Translations$shareme$history$zh_CN extends Translations$shareme$history$en
   String get reasonPin => 'PIN 输错太多次';
   @override
   String get reasonError => '出错了';
+  @override
+  String get reasonExpired => '等了 7 天没送到';
+  @override
+  String get reasonMissing => '文件找不到了';
   @override
   String get emptyTitle => '还没有传过东西';
   @override

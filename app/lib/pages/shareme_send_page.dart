@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:localsend_app/config/shareme_theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/cross_file.dart';
+import 'package:localsend_app/model/send_mode.dart';
 import 'package:localsend_app/model/state/send/send_session_state.dart';
 import 'package:localsend_app/model/state/send/sending_file.dart';
 import 'package:localsend_app/pages/shareme_receive_page.dart' show RequestWarning;
@@ -12,11 +13,16 @@ import 'package:localsend_app/pages/tabs/send_tab_vm.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/file_transfer_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
+import 'package:localsend_app/provider/network/send_queue_runner.dart';
+import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
+import 'package:localsend_app/provider/send_queue_provider.dart';
+import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/message_preview.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/shareme_format.dart';
 import 'package:localsend_app/util/shareme_own_page.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart' show isTailscaleIp;
+import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/shareme/ambient.dart';
 import 'package:localsend_app/widget/shareme/bottom_actions.dart';
 import 'package:localsend_app/widget/shareme/content_stack.dart';
@@ -33,6 +39,7 @@ import 'package:localsend_isolates/model/session_status.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:refena_flutter/addons.dart';
 import 'package:refena_flutter/refena_flutter.dart';
+import 'package:routerino/routerino.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Shuttle: the send page. One page covers every state of a send:
@@ -96,6 +103,85 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
     });
     return _autoAttempt;
   }
+
+  /// Shuttle send queue: a send to one of my devices that couldn't be delivered (not reachable once the automatic retries are used
+  /// up, busy, or broken off partway) goes into the send queue by itself, decided once per page. [_queuedAll]: nothing was
+  /// delivered by this attempt, so it isn't recorded in the history (the attempt that finally delivers it is).
+  bool _queueDecided = false;
+  bool _queueing = false;
+  String? _queuedId;
+  bool _queuedAll = false;
+
+  void _maybeQueue(SendSessionState session, FileTransferNotifier transfers, {required bool nothingSent, required int? autoAttempt}) {
+    final insecure = session.errorMessage == t.shareme.send.insecure;
+    List<SendingFile>? files;
+    var all = false;
+    if (session.status == SessionStatus.recipientBusy || (nothingSent && !insecure && autoAttempt == null)) {
+      files = session.files.values.toList();
+      all = true;
+    } else if (session.status == SessionStatus.finishedWithErrors && !nothingSent) {
+      final failed = session.files.values
+          .where((f) => f.token != null && transfers.getStatus(sessionId: session.sessionId, fileId: f.file.id) == FileStatus.failed)
+          .toList();
+      if (failed.isNotEmpty) files = failed;
+    }
+    if (files == null) return;
+    _queueDecided = true;
+    _queueing = true;
+    _queuedAll = all;
+    final queued = files;
+    // Not during build: queuing writes to disk and changes providers
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_enqueue(session, queued)));
+  }
+
+  Future<void> _enqueue(SendSessionState session, List<SendingFile> files) async {
+    final favorite = ref.read(favoritesProvider).firstWhereOrNull((f) => f.fingerprint == session.target.fingerprint);
+    final alias = favorite?.alias ?? session.target.alias;
+    final (:entry, :refusal) = await queueForDevice(ref, fingerprint: session.target.fingerprint, alias: alias, files: _crossFiles(files));
+    // Taken care of, as after a delivered send: don't leave "N selected" on the home page (shared files were moved into the queue)
+    if (entry != null && ref.read(settingsProvider).sendMode == SendMode.single) {
+      ref.redux(selectedSendingFilesProvider).dispatch(ClearSelectionAction());
+    }
+    if (!mounted) return;
+    setState(() {
+      _queueing = false;
+      _queuedId = entry?.id;
+      if (entry == null) _queuedAll = false; // not queued after all: this attempt is the last word
+    });
+    if (refusal != null) {
+      Routerino.context.showSnackBar(refusal == QueueRefusal.full ? t.shareme.queue.full(name: alias) : t.shareme.queue.tooLarge);
+    }
+  }
+
+  /// "Remove from queue": the batch won't be sent, and this attempt is recorded as it ended
+  void _cancelQueued() {
+    final id = _queuedId;
+    if (id != null) {
+      final runner = SendQueueRunner.instance;
+      if (runner != null) {
+        runner.cancel(id);
+      } else {
+        ref.redux(sendQueueProvider).dispatch(RemoveQueuedSendsAction.id(id));
+      }
+    }
+    _queuedAll = false;
+    _finish();
+  }
+
+  static List<CrossFile> _crossFiles(Iterable<SendingFile> files) => [
+    for (final f in files)
+      CrossFile(
+        name: f.file.fileName,
+        fileType: f.file.fileType,
+        size: f.file.size,
+        thumbnail: f.thumbnail,
+        asset: f.asset,
+        path: f.path,
+        bytes: f.bytes,
+        lastModified: f.file.metadata?.lastModified,
+        lastAccessed: f.file.metadata?.lastAccessed,
+      ),
+  ];
 
   // Android stays alive through a foreground service; other platforms use a wakelock to keep the screen on (as in
   // LocalSend's ProgressPage)
@@ -181,7 +267,7 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
       case SessionStatus.sending:
         notifier.setBackground(widget.sessionId, true); // keep sending in the background; cleans up by itself when done
       default:
-        if (widget.closeSessionOnClose) notifier.closeSession(widget.sessionId);
+        if (widget.closeSessionOnClose) notifier.closeSession(widget.sessionId, recordHistory: !_queuedAll);
     }
   }
 
@@ -195,26 +281,13 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
   }
 
   void _finish() {
-    ref.notifier(sendProvider).closeSession(widget.sessionId);
+    ref.notifier(sendProvider).closeSession(widget.sessionId, recordHistory: !_queuedAll);
     _close();
   }
 
   /// "Retry" when nothing was sent: sends the same files to the same device again (at its currently discovered address).
   Future<void> _retryAll(SendSessionState session) async {
-    final files = [
-      for (final f in session.files.values)
-        CrossFile(
-          name: f.file.fileName,
-          fileType: f.file.fileType,
-          size: f.file.size,
-          thumbnail: f.thumbnail,
-          asset: f.asset,
-          path: f.path,
-          bytes: f.bytes,
-          lastModified: f.file.metadata?.lastModified,
-          lastAccessed: f.file.metadata?.lastAccessed,
-        ),
-    ];
+    final files = _crossFiles(session.files.values);
     final target = ref.read(sendTabVmProvider).nearbyDevices.firstWhereOrNull((d) => d.fingerprint == session.target.fingerprint) ?? session.target;
     final notifier = ref.notifier(sendProvider);
     notifier.closeSession(widget.sessionId);
@@ -255,7 +328,12 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
       });
     }
     final nothingSent = session.status == SessionStatus.finishedWithErrors && _nothingSent(session, transfers);
-    final autoAttempt = nothingSent && isMine && session.errorMessage != t.shareme.send.insecure ? _scheduleAutoRetry(session) : null;
+    // A send started by the queue: its failures are the queue's business (it keeps the batch and tries again), so no automatic
+    // retry here and no queuing it a second time
+    final fromQueue = SendQueueRunner.isQueueSession(session.sessionId);
+    final autoAttempt = nothingSent && isMine && !fromQueue && session.errorMessage != t.shareme.send.insecure ? _scheduleAutoRetry(session) : null;
+    if (isMine && !fromQueue && !_queueDecided) _maybeQueue(session, transfers, nothingSent: nothingSent, autoAttempt: autoAttempt);
+    final queued = _queueDecided && (_queueing || _queuedId != null);
     final sending = session.status == SessionStatus.sending;
     final waiting = session.status == SessionStatus.waiting;
 
@@ -294,6 +372,9 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
                     liveSpeed: _speed,
                     nothingSent: nothingSent,
                     autoAttempt: autoAttempt,
+                    queued: queued,
+                    fromQueue: fromQueue,
+                    onCancelQueued: _queuedId == null ? null : _cancelQueued,
                     onDone: _finish,
                     onRetryAll: () async => _retryAll(session),
                     onRetryFailed: () async => _retryFailed(session, transfers),
@@ -360,6 +441,13 @@ class _Stage extends StatelessWidget {
 
   /// For my devices an automatic retry follows shortly: its attempt number (null = no automatic retry)
   final int? autoAttempt;
+
+  /// Shuttle send queue: what didn't arrive was put into the queue ([onCancelQueued] takes it out again)
+  final bool queued;
+
+  /// This send was started by the queue (a failure keeps it in the queue)
+  final bool fromQueue;
+  final VoidCallback? onCancelQueued;
   final VoidCallback onDone;
   final VoidCallback onRetryAll;
   final VoidCallback onRetryFailed;
@@ -371,6 +459,9 @@ class _Stage extends StatelessWidget {
     required this.liveSpeed,
     required this.nothingSent,
     required this.autoAttempt,
+    this.queued = false,
+    this.fromQueue = false,
+    this.onCancelQueued,
     required this.onDone,
     required this.onRetryAll,
     required this.onRetryFailed,
@@ -413,7 +504,10 @@ class _Stage extends StatelessWidget {
         ScenePhase.waiting => _waitingText(context),
         ScenePhase.moving => _movingText(context, totals, ratio),
         ScenePhase.done => _doneText(context),
-        ScenePhase.broken => failed.isNotEmpty ? _failedText(context, failed) : _StoppedText(key: const ValueKey('stopped'), session: session),
+        ScenePhase.broken =>
+          failed.isNotEmpty
+              ? _failedText(context, failed)
+              : _StoppedText(key: ValueKey('stopped-$queued'), session: session, queued: queued, fromQueue: fromQueue),
       },
       bottom: _bottom(context, phase, failed.isNotEmpty),
     );
@@ -539,6 +633,14 @@ class _Stage extends StatelessWidget {
             ],
           ),
         ),
+        if (queued || fromQueue) ...[
+          const SizedBox(height: 14),
+          Text(
+            queued ? t.shareme.queue.pageQueued(name: session.target.alias) : t.shareme.queue.stillQueued(name: session.target.alias),
+            style: ShareMeText.body.copyWith(color: c.ink2),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ],
     );
   }
@@ -558,6 +660,25 @@ class _Stage extends StatelessWidget {
       );
     }
     if (phase != ScenePhase.broken) return null;
+    if (queued) {
+      return BottomActions(
+        key: const ValueKey('queued'),
+        secondaryLabel: t.shareme.queue.cancelQueued,
+        onSecondary: onCancelQueued,
+        primaryLabel: t.shareme.queue.ok,
+        onPrimary: onDone,
+      );
+    }
+    if (fromQueue) {
+      return Padding(
+        key: const ValueKey('back'),
+        padding: BottomActions.padding,
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton(onPressed: onDone, child: Text(t.shareme.send.back)),
+        ),
+      );
+    }
     if (someFailed) {
       return BottomActions(
         key: const ValueKey('failed'),
@@ -612,7 +733,11 @@ class _Stage extends StatelessWidget {
 class _StoppedText extends StatefulWidget {
   final SendSessionState session;
 
-  const _StoppedText({required this.session, super.key});
+  /// Shuttle send queue: it was put into the queue / it came from the queue and stays there
+  final bool queued;
+  final bool fromQueue;
+
+  const _StoppedText({required this.session, this.queued = false, this.fromQueue = false, super.key});
 
   @override
   State<_StoppedText> createState() => _StoppedTextState();
@@ -626,7 +751,9 @@ class _StoppedTextState extends State<_StoppedText> {
     final c = context.sm;
     final session = widget.session;
     final name = session.target.alias;
+    final busy = session.status == SessionStatus.recipientBusy;
     final message = switch (session.status) {
+      _ when widget.queued => busy ? t.shareme.queue.busyTitle(name: name) : t.shareme.queue.cantReach(name: name),
       SessionStatus.declined => t.shareme.send.declined(name: name),
       SessionStatus.recipientBusy => t.shareme.send.busy(name: name),
       SessionStatus.tooManyAttempts => t.shareme.send.tooMany,
@@ -637,8 +764,12 @@ class _StoppedTextState extends State<_StoppedText> {
     // Not sent because the connection isn't encrypted (security fix): the reason is that safety note, shown as is, no retry
     final insecure = session.errorMessage == t.shareme.send.insecure;
     final notSent = session.status == SessionStatus.finishedWithErrors && !insecure;
-    final reason = insecure
+    final reason = widget.queued
+        ? (busy ? t.shareme.queue.pageBusyQueued(name: name) : t.shareme.queue.pageQueued(name: name))
+        : insecure
         ? session.errorMessage
+        : widget.fromQueue && (notSent || busy)
+        ? t.shareme.queue.stillQueued(name: name)
         : notSent
         ? (isTailscaleIp(session.target.ip) ? t.shareme.send.notSentReasonRemote : t.shareme.send.notSentReason)
         : null;

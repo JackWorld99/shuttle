@@ -8,6 +8,7 @@ import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/color_mode.dart';
 import 'package:localsend_app/model/persistence/favorite_device.dart';
 import 'package:localsend_app/model/persistence/paired_record.dart';
+import 'package:localsend_app/model/persistence/queued_send.dart';
 import 'package:localsend_app/model/persistence/quick_save_mode.dart';
 import 'package:localsend_app/model/persistence/receive_history_entry.dart';
 import 'package:localsend_app/model/persistence/sent_history_entry.dart';
@@ -65,6 +66,7 @@ const _stunServers = 'ls_stun_servers';
 const _receiveHistory = 'ls_receive_history';
 const _sentHistory = 'shareme_sent_history'; // Shuttle: sent history
 const _pairedDevices = 'shareme_paired_devices'; // Shuttle: paired (verified) devices
+const _sendQueue = 'shareme_send_queue'; // Shuttle: what waits to be sent to an offline "my device" (send_queue_provider.dart)
 const _lastSendTarget = 'shareme_last_send_target'; // Shuttle: last send target (fingerprint), the default when several devices are online
 const _aliasFromDeviceName = 'shareme_alias_from_device_name_v2'; // Shuttle: random alias / model code replaced by the device name (once)
 const _knownDeviceTypes = 'shareme_known_device_types'; // Shuttle: whether seen devices are PCs or phones (fingerprint → type), for avatars
@@ -123,6 +125,10 @@ class PersistenceService {
 
   PersistenceService._(this._prefs, this.isFirstAppStart);
 
+  /// Shuttle: the folder holding settings.json on desktop (next to Shuttle.exe in portable mode, else %APPDATA%\Shuttle); null on
+  /// phones, whose settings live in the platform store. Other data that belongs with the settings (the send queue's copies) goes here.
+  static String? settingsDirectory;
+
   static Future<PersistenceService> initialize({
     required bool supportsDynamicColors,
   }) async {
@@ -132,9 +138,11 @@ class PersistenceService {
     if (checkPlatform(const [TargetPlatform.windows, TargetPlatform.linux, TargetPlatform.macOS]) && portableStore.exists()) {
       _logger.info('Using portable settings.');
       SharedPreferencesStorePlatform.instance = portableStore;
+      settingsDirectory = File(portableStore.filePath).parent.path;
     } else if (defaultTargetPlatform == TargetPlatform.windows) {
       // Shuttle: don't read official LocalSend's old settings file (see the comment above _windowsFile)
       SharedPreferencesStorePlatform.instance = SharedPreferencesFile(filePath: _windowsFile);
+      settingsDirectory = File(_windowsFile).parent.path;
     }
 
     final bool isFirstAppStart;
@@ -344,6 +352,24 @@ class PersistenceService {
 
   Future<void> setKnownDeviceTypes(Map<String, String> types) async {
     await _prefs.setString(_knownDeviceTypes, jsonEncode(types));
+  }
+
+  /// Shuttle: the send queue (one JSON string per batch; unreadable entries are skipped)
+  List<QueuedSend> getSendQueue() {
+    final raw = _prefs.getStringList(_sendQueue) ?? [];
+    final result = <QueuedSend>[];
+    for (final entry in raw) {
+      try {
+        result.add(QueuedSend.fromJson(jsonDecode(entry) as Map<String, dynamic>));
+      } catch (e) {
+        _logger.warning('Could not parse a queued send', e);
+      }
+    }
+    return result;
+  }
+
+  Future<void> setSendQueue(List<QueuedSend> entries) async {
+    await _prefs.setStringList(_sendQueue, entries.map((e) => jsonEncode(e.toJson())).toList());
   }
 
   /// Shuttle: the device last sent to (fingerprint)

@@ -444,6 +444,8 @@ String _failReason(SentHistoryEntry s) {
     SentHistoryResult.recipientBusy => t.shareme.history.reasonBusy,
     SentHistoryResult.tooManyAttempts => t.shareme.history.reasonPin,
     SentHistoryResult.error => s.errorMessage ?? t.shareme.history.reasonError,
+    SentHistoryResult.expired => t.shareme.history.reasonExpired,
+    SentHistoryResult.missing => t.shareme.history.reasonMissing,
     SentHistoryResult.delivered || SentHistoryResult.partial => '',
   };
 }

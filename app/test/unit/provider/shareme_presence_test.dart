@@ -97,6 +97,14 @@ void main() {
       expect(presenceDue(offline, now.subtract(const Duration(minutes: 1)), now), isFalse);
       expect(presenceDue(offline, now.subtract(const Duration(minutes: 1)), now, force: true), isTrue);
     });
+
+    test('an offline device with something waiting in the send queue is asked every minute; online ones as before', () {
+      expect(presenceIntervalFor(target(), waiting: true), const Duration(minutes: 1));
+      expect(presenceIntervalFor(target(listed: _device(_pcFp, '192.168.9.20')), waiting: true), const Duration(seconds: 20));
+      final offline = target();
+      expect(presenceDue(offline, now.subtract(const Duration(seconds: 40)), now, waiting: true), isFalse);
+      expect(presenceDue(offline, now.subtract(const Duration(minutes: 1)), now, waiting: true), isTrue);
+    });
   });
 
   group('how many misses mean offline', () {

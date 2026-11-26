@@ -63,6 +63,9 @@
       "dropActiveTo": "松手就发给 {name}",
       "file": "文件",
       "text": "文字",
+      "queued(plural)": {
+        "other": "{n} 项待发"
+      },
       "edgeCount(plural)": {
         "other": "{n} 项"
       },
@@ -85,6 +88,8 @@
       "keepGoing": "继续传",
       "shareLink": "对方没装 Shuttle？用链接发",
       "offlineCannot": "不在线 · 上线后才能发",
+      "offlineQueue": "不在线 · 上线后自动发",
+      "queueTo": "上线后发给 {name}",
       "nearbyNeedsApproval": "要对方确认",
       "noDevices": "附近还没找到设备。请确认两台设备连着同一个 WiFi。",
       "sendTo": "发送到 {name}",
@@ -140,12 +145,57 @@
         "other": "{n} 个没发出去"
       }
     },
+    "queue": {
+      "title": "待发给 {name}",
+      "offline": "{name} 现在不在线，上线后自动发。",
+      "empty": "{name} 现在不在线。选好要发的，它上线后自动发过去。",
+      "holdLan": "现在是远程连着。超过 50 MB 的等回到同一个 WiFi 再发。",
+      "retrying": "暂时连不上，过一会儿自动再试。",
+      "online": "{name} 在线，马上就发。",
+      "sending": "正在发",
+      "waiting": "等待",
+      "queuedAgo": "{time}放进来",
+      "textItem": "文字",
+      "linkItem": "链接",
+      "more": "{name} 等 {n} 项",
+      "cancel": "取消",
+      "cancelAll": "全部取消",
+      "tryNow": "现在试一次",
+      "sendNow": "现在发",
+      "addMore": "再加一些",
+      "pick": "选要发的",
+      "added": "已放进待发，{name} 上线后自动发",
+      "undo": "撤销",
+      "full": "给 {name} 的待发已经有 50 批了，先取消一些",
+      "tooLarge": "待发里存的副本会超过 2 GB，先取消一些",
+      "sentTextSnack": "待发的文字已发给 {name}",
+      "needsPin": "对方要输入 PIN，待发的不能自动发。请手动发一次。",
+      "cantReach": "连不上 {name}",
+      "busyTitle": "{name} 正在接收别的文件",
+      "pageQueued": "已放进待发，{name} 上线后自动发。",
+      "pageBusyQueued": "已放进待发，{name} 空下来就自动发。",
+      "stillQueued": "还在待发里，{name} 上线后自动再试。",
+      "queuing": "正在放进待发…",
+      "cancelQueued": "取消待发",
+      "ok": "好",
+      "sentSnack(plural)": {
+        "other": "待发的 {n} 项已发给 {name}"
+      },
+      "missingSnack(plural)": {
+        "other": "有 {n} 项找不到了，没发给 {name}"
+      },
+      "missingShort(plural)": {
+        "other": "{n} 项找不到了"
+      }
+    },
     "text": {
       "sheetTitle": "发文字或链接",
       "clipTray": "把剪贴板发给我的设备",
       "clipEmpty": "剪贴板是空的",
       "snackCopied": "已复制，来自 {name}",
       "snackLink": "{name} 发来一个链接",
+      "snackLateText": "{name} 发来一段文字（之前排队的）",
+      "snackLateLink": "{name} 发来一个链接（之前排队的）",
       "snackView": "查看",
       "snackOpen": "打开",
       "autoCopied": "来自我的设备，已自动复制",
@@ -249,6 +299,8 @@
       "reasonBusy": "对方正忙",
       "reasonPin": "PIN 输错太多次",
       "reasonError": "出错了",
+      "reasonExpired": "等了 7 天没送到",
+      "reasonMissing": "文件找不到了",
       "emptyTitle": "还没有传过东西",
       "emptyBody": "收到的和发出的都会记在这里。",
       "emptyAction": "发照片和视频",

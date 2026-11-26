@@ -9,6 +9,7 @@ import 'package:localsend_app/model/cross_file.dart';
 import 'package:localsend_app/pages/tabs/send_tab_vm.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/util/message_preview.dart';
+import 'package:localsend_app/widget/shareme/send_queue_sheet.dart' show queueAndTell;
 import 'package:localsend_app/widget/shareme/send_target_sheet.dart';
 import 'package:localsend_app/widget/shareme/sm_sheets.dart';
 import 'package:localsend_isolates/model/file_type.dart';
@@ -69,8 +70,9 @@ class _SendTextSheetState extends State<_SendTextSheet> with Refena {
   Future<void> _send() async {
     final vm = ref.read(sendTabVmProvider);
     final device = sendTargetDevice(vm, _selected);
+    final offline = device == null ? offlineMineTarget(vm, _selected) : null;
     final text = _controller.text;
-    if (device == null || text.trim().isEmpty) return;
+    if ((device == null && offline == null) || text.trim().isEmpty) return;
     final bytes = utf8.encode(text);
     // Built the same way as LocalSend's AddMessageAction (the text is sent as an in-memory text/plain file)
     final file = CrossFile(
@@ -84,9 +86,13 @@ class _SendTextSheetState extends State<_SendTextSheet> with Refena {
       lastModified: null,
       lastAccessed: null,
     );
-    final sender = ref.notifier(sendProvider);
     Navigator.of(context).pop();
-    await sender.startSession(target: device, files: [file], background: false);
+    if (device == null) {
+      // Shuttle send queue: an offline "my device": the text waits and goes out once it is back
+      await queueAndTell(ref, fingerprint: offline!.fingerprint, alias: offline.alias, files: [file]);
+      return;
+    }
+    await ref.notifier(sendProvider).startSession(target: device, files: [file], background: false);
   }
 
   @override
@@ -94,7 +100,8 @@ class _SendTextSheetState extends State<_SendTextSheet> with Refena {
     final c = context.sm;
     final vm = context.watch(sendTabVmProvider);
     if (!_userChose && _selected == null) _selected = defaultSendTarget(vm);
-    final device = sendTargetDevice(vm, _selected);
+    final device = sendTargetDevice(vm, _selected) ?? offlineMineTarget(vm, _selected);
+    final queued = device != null && sendTargetDevice(vm, _selected) == null;
     final text = _controller.text;
     final clip = _clipboard;
     final showClip = clip != null && clip != text.trim();
@@ -178,7 +185,7 @@ class _SendTextSheetState extends State<_SendTextSheet> with Refena {
               SendToButton(
                 device: device,
                 enabled: text.trim().isNotEmpty,
-                label: t.shareme.text.send,
+                label: queued ? t.shareme.send.queueTo(name: device.alias) : t.shareme.text.send,
                 onPressed: _send,
               ),
             ],

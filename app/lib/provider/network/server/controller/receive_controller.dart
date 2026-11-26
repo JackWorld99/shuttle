@@ -24,6 +24,7 @@ import 'package:localsend_app/provider/receive_history_provider.dart';
 import 'package:localsend_app/provider/security_provider.dart';
 import 'package:localsend_app/provider/selection/selected_receiving_files_provider.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
+import 'package:localsend_app/provider/send_queue_provider.dart' show isLateQueuedMessage;
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
@@ -279,9 +280,12 @@ class ReceiveController {
       // Read the sender name first: once "received" is answered the session is over and it would read as empty (the snackbar
       // once said "Copied, from " with no name).
       final alias = server.getStateOrNull()?.session?.senderAlias ?? '';
-      unawaited(Clipboard.setData(ClipboardData(text: message)));
+      // Shuttle: text that waited in the sender's send queue for a while isn't copied: it would replace whatever was copied in
+      // the meantime. The sender puts the time it was queued into the "modified" field (isLateQueuedMessage); ordinary text has none.
+      final late = isLateQueuedMessage(files.values.firstOrNull?.metadata?.lastModified, DateTime.now());
+      if (!late) unawaited(Clipboard.setData(ClipboardData(text: message)));
       server.ref.read(receiveProvider).onAccept();
-      showReceivedTextSnack(alias: alias, message: message, senderFingerprint: senderFingerprint);
+      showReceivedTextSnack(alias: alias, message: message, senderFingerprint: senderFingerprint, late: late);
     } else {
       // Shuttle: text and links are shown in a bottom sheet that is closed after reading.
       // Closing the sheet answers the sender with "seen" (accepting no files, like LocalSend's "Close" button);

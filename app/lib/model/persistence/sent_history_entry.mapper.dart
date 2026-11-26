@@ -43,6 +43,10 @@ class SentHistoryResultMapper extends EnumMapper<SentHistoryResult> {
         return SentHistoryResult.tooManyAttempts;
       case r'error':
         return SentHistoryResult.error;
+      case r'expired':
+        return SentHistoryResult.expired;
+      case r'missing':
+        return SentHistoryResult.missing;
       default:
         return SentHistoryResult.values[7];
     }
@@ -67,6 +71,10 @@ class SentHistoryResultMapper extends EnumMapper<SentHistoryResult> {
         return r'tooManyAttempts';
       case SentHistoryResult.error:
         return r'error';
+      case SentHistoryResult.expired:
+        return r'expired';
+      case SentHistoryResult.missing:
+        return r'missing';
     }
   }
 }

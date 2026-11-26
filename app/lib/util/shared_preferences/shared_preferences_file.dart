@@ -56,6 +56,9 @@ class SharedPreferencesFile extends SharedPreferencesStorePlatform {
     this.beautify = false,
   }) : _file = File(filePath);
 
+  /// Shuttle: where the settings are stored (the send queue keeps its copies next to it)
+  String get filePath => _file.path;
+
   /// The file is read on first use.
   Map<String, Object>? _loaded;
 

@@ -27,6 +27,7 @@ import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/paired_devices_provider.dart';
 import 'package:localsend_app/provider/receive_history_provider.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
+import 'package:localsend_app/provider/send_queue_provider.dart';
 import 'package:localsend_app/util/native/file_picker.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/shareme_format.dart';
@@ -38,6 +39,7 @@ import 'package:localsend_app/widget/shareme/device_avatar.dart';
 import 'package:localsend_app/widget/shareme/film_strip.dart';
 import 'package:localsend_app/widget/shareme/motion.dart';
 import 'package:localsend_app/widget/shareme/progress_bar.dart';
+import 'package:localsend_app/widget/shareme/send_queue_sheet.dart';
 import 'package:localsend_app/widget/shareme/send_target_sheet.dart';
 import 'package:localsend_app/widget/shareme/send_text_sheet.dart';
 import 'package:localsend_app/widget/shareme/sm_card.dart';
@@ -81,12 +83,6 @@ class _TransferTabState extends State<TransferTab> with Refena, SmTabState {
     await ref.global.dispatchAsync(StartSmartScan());
   }
 
-  void _toast(String text) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text)));
-  }
-
   /// Send dock: pick content → "Send to" sheet → send.
   Future<void> _pick(FilePickerOption option) => pickAndSend(context, option);
 
@@ -124,6 +120,51 @@ class _TransferTabState extends State<TransferTab> with Refena, SmTabState {
     await rememberSendTarget(ref, device.fingerprint);
     if (!mounted) return;
     await ref.read(sendTabVmProvider).onTapDevice(context, device);
+  }
+
+  /// Shuttle send queue: a row in "My devices" was tapped.
+  /// - Online with nothing waiting, sending, or something picked: as before ([_tapDevice]).
+  /// - Offline with something picked: it is queued for this device.
+  /// - Otherwise "Waiting for X" opens (offline with nothing waiting: it explains that what is picked goes out once X is back).
+  Future<void> _tapMine(FavoriteDevice f, Device? device, SendSessionState? session) async {
+    final waiting = queuedFor(ref.read(sendQueueProvider), f.fingerprint).isNotEmpty;
+    final picked = ref.read(selectedSendingFilesProvider).isNotEmpty;
+    if (device != null && (session != null || picked || !waiting)) {
+      await _tapDevice(device, session);
+      return;
+    }
+    if (device == null && picked) {
+      await rememberSendTarget(ref, f.fingerprint);
+      await queueSelectionFor(ref, f);
+      return;
+    }
+    final result = await showSendQueueSheet(context, fingerprint: f.fingerprint);
+    if (result == SendQueueSheetResult.pick && mounted) await _pickAndQueue(f);
+  }
+
+  /// Asks what to send to an offline "my device", picks it and queues it (sends it right away if the device came back meanwhile)
+  Future<void> _pickAndQueue(FavoriteDevice f) async {
+    final option = await showSendOptions(
+      context,
+      name: f.alias,
+      avatar: DeviceAvatar(deviceType: knownDeviceType(f.fingerprint), size: 40, mine: true, offline: true),
+      options: _sendOptions(),
+    );
+    if (option == null || !mounted) return;
+    await rememberSendTarget(ref, f.fingerprint);
+    if (!mounted) return;
+    if (option == FilePickerOption.text) {
+      await showSendTextSheet(context, to: f.fingerprint);
+      return;
+    }
+    await ref.global.dispatchAsync(PickFileAction(option: option, context: context));
+    if (!mounted || ref.read(selectedSendingFilesProvider).isEmpty) return;
+    final online = sendTargetDevice(ref.read(sendTabVmProvider), f.fingerprint);
+    if (online != null) {
+      await _sendSelectedTo(ref, online);
+      return;
+    }
+    await queueSelectionFor(ref, f);
   }
 
   /// What can be sent, the usual things first
@@ -226,6 +267,7 @@ class _TransferTabState extends State<TransferTab> with Refena, SmTabState {
       if (mounted) setState(() {});
     }
 
+    final queue = context.watch(sendQueueProvider);
     SendSessionState? activeSession(String fingerprint) => sessions.values.firstWhereOrNull(
       (s) => s.target.fingerprint == fingerprint && (s.status == SessionStatus.waiting || s.status == SessionStatus.sending),
     );
@@ -267,9 +309,10 @@ class _TransferTabState extends State<TransferTab> with Refena, SmTabState {
         name: f.alias,
         device: device,
         unverified: !verified.contains(f.fingerprint),
+        queued: queue.where((e) => e.targetFingerprint == f.fingerprint).fold(0, (n, e) => n + e.files.length),
         session: session,
         transfers: transfers,
-        onTap: device == null ? () => _toast(t.shareme.home.offlineTap(name: f.alias)) : () async => _tapDevice(device, session),
+        onTap: () async => _tapMine(f, device, session),
         onLongPress: () async => _deviceMenu(f, device),
       );
     }
@@ -488,9 +531,25 @@ Future<void> chooseTargetAndSend(BuildContext context, {bool confirm = false}) a
   if (device == null || !context.mounted) return; // sheet dismissed: keep the selection so a device row can still send it
   await rememberSendTarget(ref, device.fingerprint);
   if (!context.mounted) return;
+  // Shuttle send queue: an offline "my device" was picked: queue it, it goes out once the device is back
+  final offlineMine = sendTargetDevice(ref.read(sendTabVmProvider), device.fingerprint) == null
+      ? ref.read(favoritesProvider).firstWhereOrNull((f) => f.fingerprint == device.fingerprint)
+      : null;
+  if (offlineMine != null) {
+    await queueSelectionFor(ref, offlineMine);
+    return;
+  }
   // Must read the latest vm: the vm captured on tap still has no selected files, and sending with it would show "Add
   // files" once more
   await ref.read(sendTabVmProvider).onTapDevice(context, device);
+}
+
+/// Shuttle send queue: queues the current selection for [favorite] (offline) and clears it, as sending does
+Future<void> queueSelectionFor(Ref ref, FavoriteDevice favorite) async {
+  final files = ref.read(selectedSendingFilesProvider);
+  if (files.isEmpty) return;
+  final entry = await queueAndTell(ref, fingerprint: favorite.fingerprint, alias: favorite.alias, files: files);
+  if (entry != null) ref.redux(selectedSendingFilesProvider).dispatch(ClearSelectionAction());
 }
 
 /// Starts sending the current selection directly. Not vm.onTapDevice: it uses the selection snapshot from when the vm was
@@ -793,6 +852,9 @@ class _DeviceRow extends StatelessWidget {
   /// An unverified device in "My devices" (its transfers aren't auto-accepted)
   final bool unverified;
 
+  /// Items waiting for it in the send queue
+  final int queued;
+
   const _DeviceRow({
     required this.avatar,
     required this.name,
@@ -804,6 +866,7 @@ class _DeviceRow extends StatelessWidget {
     this.trailing,
     this.showStatus = true,
     this.unverified = false,
+    this.queued = 0,
   });
 
   @override
@@ -858,6 +921,7 @@ class _DeviceRow extends StatelessWidget {
                                     : remote
                                     ? t.shareme.home.viaTailscale
                                     : t.shareme.home.sameWifi) +
+                                (queued > 0 ? ' · ${t.shareme.home.queued(n: queued)}' : '') +
                                 (unverified ? ' · ${t.shareme.home.unverified}' : ''),
                             style: ShareMeText.meta.copyWith(color: c.ink2),
                             overflow: TextOverflow.ellipsis,

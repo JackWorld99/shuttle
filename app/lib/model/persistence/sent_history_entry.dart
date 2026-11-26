@@ -89,4 +89,10 @@ enum SentHistoryResult {
   recipientBusy,
   tooManyAttempts,
   error,
+
+  /// Shuttle: waited in the send queue for 7 days (queueMaxAge) without the device coming back
+  expired,
+
+  /// Shuttle: queued, but the files were deleted or moved (or can no longer be read) before the device came back
+  missing,
 }

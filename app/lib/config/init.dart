@@ -15,6 +15,7 @@ import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/app_arguments_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
+import 'package:localsend_app/provider/network/send_queue_runner.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/network/webrtc/signaling_provider.dart';
 import 'package:localsend_app/provider/persistence_provider.dart';
@@ -249,6 +250,10 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
   }
 
   ref.notifier(smUpdateProvider).start(); // Shuttle: auto-update (first check 1 minute after launch)
+
+  // Shuttle: the send queue starts sending what waits for "my devices" as soon as they are reachable (after the server and
+  // discovery are up, so a device announcing itself is noticed)
+  if (SendQueueRunner.instance == null) SendQueueRunner.start(ref);
 
   // ignore: dead_code
   if (webRTCEnabled) {

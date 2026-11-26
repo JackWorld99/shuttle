@@ -12,6 +12,7 @@ import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/paired_devices_provider.dart';
+import 'package:localsend_app/provider/send_queue_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/shareme_pairing/pair_crypto.dart' show isTailscaleIp;
 import 'package:localsend_isolates/isolate.dart';
@@ -46,6 +47,8 @@ import 'package:refena_flutter/refena_flutter.dart';
 //   at once, so the LAN path is picked up again after returning to the same Wi-Fi.
 // - The phone only asks while Shuttle is in the foreground (saves battery) and asks everyone once on returning to it; the PC
 //   asks all the time (see home_page.dart).
+// - An offline device that has something waiting in the send queue is asked every minute instead of every 5 (the queue goes out
+//   as soon as it answers). While it is unreachable these asks never arrive, so they cost the other device nothing.
 
 final _logger = Logger('Presence');
 
@@ -57,6 +60,9 @@ const presenceMobileInterval = Duration(seconds: 60);
 
 /// How often an offline device from "my devices" is asked
 const presenceOfflineInterval = Duration(minutes: 5);
+
+/// How often an offline device is asked while something waits for it in the send queue
+const presenceQueuedInterval = Duration(minutes: 1);
 
 /// How long a single ask may go unanswered before it counts as no answer
 const presenceTimeout = Duration(seconds: 5);
@@ -91,18 +97,18 @@ Set<String> busyFingerprints(Iterable<SendSessionState> sends, ReceiveSessionSta
 }
 
 /// How often to ask this device: [presenceInterval] for an online PC, [presenceMobileInterval] for an online phone,
-/// [presenceOfflineInterval] when offline
-Duration presenceIntervalFor(PresenceTarget target) {
+/// [presenceOfflineInterval] when offline ([presenceQueuedInterval] when something [waiting] for it in the send queue)
+Duration presenceIntervalFor(PresenceTarget target, {bool waiting = false}) {
   final listed = target.listed;
-  if (listed == null) return presenceOfflineInterval;
+  if (listed == null) return waiting ? presenceQueuedInterval : presenceOfflineInterval;
   return listed.deviceType == DeviceType.mobile ? presenceMobileInterval : presenceInterval;
 }
 
 /// Whether to ask it this round: never asked, [force] (the phone just returned to the foreground), or enough time since the last
 /// ask. The interval has 2 seconds of slack: the timer ticks every 20 seconds, so without it a 60-second interval would become 80.
-bool presenceDue(PresenceTarget target, DateTime? lastAsked, DateTime now, {bool force = false}) {
+bool presenceDue(PresenceTarget target, DateTime? lastAsked, DateTime now, {bool force = false, bool waiting = false}) {
   if (force || lastAsked == null) return true;
-  return now.difference(lastAsked) >= presenceIntervalFor(target) - const Duration(seconds: 2);
+  return now.difference(lastAsked) >= presenceIntervalFor(target, waiting: waiting) - const Duration(seconds: 2);
 }
 
 /// Devices and addresses that may be asked this round: only "my devices" (online ones at their current address, plus their other
@@ -225,13 +231,14 @@ class CheckPresenceAction extends AsyncGlobalAction {
   Future<void> _check() async {
     final since = DateTime.now();
     final settings = ref.read(settingsProvider);
+    final queued = ref.read(sendQueueProvider).map((e) => e.targetFingerprint).toSet();
     final targets = presenceTargets(
       nearby: ref.read(nearbyDevicesProvider).devices.values,
       favorites: ref.read(favoritesProvider),
       paired: ref.read(pairedDevicesProvider),
       https: settings.https,
       busy: busyFingerprints(ref.read(sendProvider).values, ref.read(serverProvider)?.session),
-    ).where((t) => presenceDue(t, _lastAsked[t.fingerprint], since, force: force)).toList();
+    ).where((t) => presenceDue(t, _lastAsked[t.fingerprint], since, force: force, waiting: queued.contains(t.fingerprint))).toList();
     if (targets.isEmpty) return;
     for (final t in targets) {
       _lastAsked[t.fingerprint] = since;
