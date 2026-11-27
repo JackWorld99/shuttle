@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -291,7 +292,9 @@ class _SmSendPageState extends State<SmSendPage> with Refena {
     final files = _crossFiles(session.files.values);
     final target = ref.read(sendTabVmProvider).nearbyDevices.firstWhereOrNull((d) => d.fingerprint == session.target.fingerprint) ?? session.target;
     final notifier = ref.notifier(sendProvider);
-    notifier.closeSession(widget.sessionId);
+    // Not recorded in the sent history: nothing of it arrived, and the new attempt is the same send (it is recorded when it
+    // ends, or when the send queue finally delivers it). Otherwise each automatic retry left a "not delivered" entry.
+    notifier.closeSession(widget.sessionId, recordHistory: false);
     _close();
     await notifier.startSession(target: target, files: files, background: false);
   }
@@ -585,7 +588,9 @@ class _Stage extends StatelessWidget {
     return Column(
       key: const ValueKey('moving'),
       children: [
-        BigPercent(ratio),
+        // While reconnecting, not above the 99 % the line below says: the sender may have handed (nearly) everything to the
+        // network before the connection broke, but the receiver hasn't stored it all, so it isn't done
+        BigPercent(reconnecting ? math.min(ratio, 0.99) : ratio),
         const SizedBox(height: 4),
         if (reconnecting)
           Row(

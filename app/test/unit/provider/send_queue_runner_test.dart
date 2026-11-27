@@ -147,6 +147,18 @@ Device _device(String ip) => Device(
   channels: const [],
 );
 
+/// Lets the runner get on. Before it sends a batch it checks the queued files on disk (real file I/O), which can take more turns
+/// of the event loop than [pumpEventQueue] gives on a busy machine (a full test run failed here once). Waits until [done] holds,
+/// for at most 5 seconds; without a condition it only lets the event queue run (for checks that nothing happens).
+Future<void> settle([bool Function()? done]) async {
+  await pumpEventQueue();
+  final deadline = DateTime.now().add(const Duration(seconds: 5));
+  while (done != null && !done() && DateTime.now().isBefore(deadline)) {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await pumpEventQueue();
+  }
+}
+
 void main() {
   late Directory dir;
   late _Store store;
@@ -217,7 +229,7 @@ void main() {
 
     online = {_phone: _device('192.168.1.5')};
     runner.pump();
-    await pumpEventQueue();
+    await settle(() => sender.attempts.isNotEmpty);
     expect(sender.attempts, hasLength(1));
     expect(sender.attempts.single.fileIds, ['1'], reason: 'the queued IDs, so the result maps back to the batch');
     expect(SendQueueRunner.isQueueSession(sender.attempts.single.sessionId), isTrue);
@@ -239,10 +251,10 @@ void main() {
     add('first', [queued('1')], at: now.subtract(const Duration(minutes: 5)));
     online = {_phone: _device('192.168.1.5')};
     runner.pump();
-    await pumpEventQueue();
+    await settle(() => sender.attempts.isNotEmpty);
     expect(sender.attempts.map((a) => a.fileIds.single), ['1']);
     sender.attempts.last.end(SessionStatus.finished);
-    await pumpEventQueue();
+    await settle(() => sender.attempts.length == 2);
     expect(sender.attempts.map((a) => a.fileIds.single), ['1', '2']);
   });
 
@@ -250,7 +262,7 @@ void main() {
     add('a', [queued('1')]);
     online = {_phone: _device('192.168.1.5')};
     runner.pump();
-    await pumpEventQueue();
+    await settle(() => sender.attempts.isNotEmpty);
     sender.attempts.single.end(SessionStatus.finishedWithErrors, error: 'Connection refused');
     await pumpEventQueue();
     expect(queueIds(), ['a']);
@@ -263,7 +275,7 @@ void main() {
 
     now = now.add(const Duration(seconds: 30));
     runner.pump();
-    await pumpEventQueue();
+    await settle(() => sender.attempts.length == 2);
     expect(sender.attempts, hasLength(2));
   });
 
@@ -271,7 +283,7 @@ void main() {
     add('a', [queued('1'), queued('2'), queued('3')]);
     online = {_phone: _device('192.168.1.5')};
     runner.pump();
-    await pumpEventQueue();
+    await settle(() => sender.attempts.isNotEmpty);
     sender.attempts.single.end(
       SessionStatus.finishedWithErrors,
       statuses: {'1': FileStatus.finished, '2': FileStatus.failed, '3': FileStatus.queue},
@@ -284,7 +296,7 @@ void main() {
     add('a', [queued('1')]);
     online = {_phone: _device('192.168.1.5')};
     runner.pump();
-    await pumpEventQueue();
+    await settle(() => sender.attempts.isNotEmpty);
     sender.attempts.single.end(SessionStatus.declined);
     await pumpEventQueue();
     expect(queueIds(), isEmpty);
@@ -295,7 +307,7 @@ void main() {
     add('some', [queued('1'), queued('gone', path: p.join(dir.path, 'nothing-here.jpg'))]);
     online = {_phone: _device('192.168.1.5')};
     runner.pump();
-    await pumpEventQueue();
+    await settle(() => sender.attempts.isNotEmpty);
     expect(sender.attempts.single.fileIds, ['1']);
     sender.attempts.single.end(SessionStatus.finished);
     await pumpEventQueue();
@@ -305,7 +317,7 @@ void main() {
 
     add('none', [queued('x', path: p.join(dir.path, 'also-gone.jpg'))]);
     runner.pump();
-    await pumpEventQueue();
+    await settle(() => notices.length == 2);
     expect(sender.attempts, hasLength(1));
     expect(queueIds(), isEmpty);
     expect(notices.last, ('none', 0, 1));
@@ -335,7 +347,7 @@ void main() {
     expect(sender.attempts, isEmpty);
 
     runner.tryNow(_phone);
-    await pumpEventQueue();
+    await settle(() => sender.attempts.isNotEmpty);
     expect(presenceAsks, 1);
     expect(sender.attempts, hasLength(1));
   });
@@ -367,7 +379,7 @@ void main() {
     add('a', [queued('1')]);
     online = {_phone: _device('192.168.1.5')};
     runner.pump();
-    await pumpEventQueue();
+    await settle(() => runner.isSending('a'));
     expect(runner.isSending('a'), isTrue);
     runner.cancel('a');
     expect(queueIds(), isEmpty);

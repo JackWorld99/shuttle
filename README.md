@@ -41,6 +41,7 @@ Share → tap your PC → done. The original file, every byte checked.
 | 📋 **Copy here, paste there** | Press <kbd>Ctrl</kbd>+<kbd>V</kbd> on your PC to send the clipboard to your phone. Share a link from your phone and it's ready to paste on your PC. |
 | 🔒 **Private by design** | No account, no cloud, no tracking, no ads. Transfers are encrypted, and only the device that scans the QR code on your screen can pair, so no one can sneak in. |
 | 🖥️ **Always ready** | Shuttle waits quietly in the tray, can start with Windows, and keeps itself up to date with signed updates. |
+| 📦 **Nothing lost on the way** | Send to your phone while it's offline: the files wait and go out by themselves once it's back. A big video cut off halfway picks up where it stopped. |
 | 🌍 **Works away from home** | Add [Tailscale](https://tailscale.com) on both devices and it works over mobile data too — still end-to-end encrypted. |
 
 ## How it compares
@@ -118,8 +119,8 @@ Shuttle is built on [LocalSend](https://github.com/localsend/localsend), the exc
 ## What's next
 
 - [ ] Signed macOS build
-- [ ] Resume large transfers after a dropped connection
-- [ ] Send queue: files wait on your PC and go out as soon as your phone is back online
+- [x] Resume large transfers after a dropped connection
+- [x] Send queue: files wait on your PC and go out as soon as your phone is back online
 
 Have an idea? [Open an issue](../../issues/new/choose).
 
