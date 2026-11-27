@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:localsend_app/model/cross_file.dart';
+import 'package:localsend_app/model/send_mode.dart';
 import 'package:localsend_app/model/state/settings_state.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/file_transfer_provider.dart';
@@ -12,6 +13,7 @@ import 'package:localsend_app/provider/http_provider.dart';
 import 'package:localsend_app/provider/network/send_provider.dart';
 import 'package:localsend_app/provider/network/shareme_send_resume.dart';
 import 'package:localsend_app/provider/persistence_provider.dart';
+import 'package:localsend_app/provider/send_queue_provider.dart' show QueueStep, classifyQueueResult;
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
@@ -38,6 +40,11 @@ class _Settings extends Fake implements SettingsState {
 
   @override
   bool get https => true;
+
+  // A send that went out completely is marked finished before its session closes (send queue), and closing a finished
+  // session reads the send mode
+  @override
+  SendMode get sendMode => SendMode.multiple;
 }
 
 class _TestSettingsService extends SettingsService {
@@ -262,6 +269,67 @@ void main() {
     expect(uploads().last.files.single.resumeOffset, 700);
     // Everything was sent: the background session closed itself.
     expect(ref.read(sendProvider), isEmpty);
+  });
+
+  test('a send from the queue that cannot continue in time stays queued, and its next attempt starts at the offset', () async {
+    // Shuttle send queue + resume: the queue runs its sends in the background. When the connection is lost and the receiver
+    // stays unreachable, the file must come back as failed (the queue keeps it, no "Continue sending" is left open), and the
+    // queue's next attempt (a new request, not naming the old session) starts where the receiver says its part ends.
+    Never unreachable(PrepareUploadRequestDto _) => throw const RsHttpClientError.reqwest('connection refused');
+    final receiver = _Receiver([
+      (payload) => _accepted('remote-1', 'file-1', 'token-1', 0),
+      unreachable,
+      unreachable,
+      unreachable,
+      (payload) => _accepted('remote-2', 'file-1', 'token-2', 400),
+    ]);
+    uploadScripts = [
+      () => [
+        HttpUploadFileStartedEvent(fileId: 'file-1'),
+        HttpUploadFileProgressEvent(fileId: 'file-1', progress: 0.4),
+        HttpUploadFileFailedEvent(fileId: 'file-1', error: 'timed out', connectionLost: true),
+      ],
+      () => [HttpUploadFileFinishedEvent(fileId: 'file-1')],
+    ];
+    final ref = container(receiver);
+    final sender = ref.notifier(sendProvider);
+    const file = CrossFile(
+      name: 'video.mp4',
+      fileType: FileType.video,
+      size: 1000,
+      thumbnail: null,
+      asset: null,
+      path: null,
+      bytes: [1, 2, 3],
+      lastModified: null,
+      lastAccessed: null,
+    );
+    Future<QueueStep> attempt(String sessionId) async {
+      sender.trackResult(sessionId);
+      await sender.startSession(
+        target: _createDevice(fingerprint: 'target'),
+        files: [file],
+        background: true,
+        sessionId: sessionId,
+        fileIds: ['file-1'],
+        askPin: false,
+      );
+      final result = sender.takeResult(sessionId);
+      final step = classifyQueueResult(result, insecureMessage: 'insecure', needsPinMessage: 'pin').step;
+      // As the queue runner does: close its background session, recorded only when the batch is done
+      if (ref.read(sendProvider)[sessionId] != null) sender.closeSession(sessionId, recordHistory: false);
+      return step;
+    }
+
+    expect(await attempt('queued-1'), QueueStep.retry);
+    expect(receiver.requests, hasLength(1 + continueDelays.length));
+    expect(ref.read(sendProvider), isEmpty);
+    expect(ref.read(sendResumeProvider).get('queued-1'), isNull);
+
+    expect(await attempt('queued-2'), QueueStep.done);
+    expect(receiver.requests.last.shuttleResume?.v, 1);
+    expect(receiver.requests.last.shuttleResume?.resumeOf, isNull);
+    expect(uploads().last.files.single.resumeOffset, 400);
   });
 
   test('a receiver without the extension (LocalSend) fails the file as before', () async {
