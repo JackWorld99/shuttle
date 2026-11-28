@@ -17,9 +17,9 @@ const UPLOAD_CHANNEL_CAPACITY: usize = 16;
 const WRITE_BUFFER_SIZE: usize = 512 * 1024;
 
 /// Shuttle: how much of a continuable upload ([UploadParams::resumable]) is
-/// written between two points at which the file is synced to disk and
-/// reported on `saved_tx`. After a crash or a power loss, the upload continues
-/// from the last such point.
+/// written at least between two points at which the file is synced to disk and
+/// reported on `saved_tx` (a sync runs next to the writes, one at a time).
+/// After a crash or a power loss, the upload continues from the last such point.
 pub const SYNC_INTERVAL: u64 = 64 * 1024 * 1024;
 
 /// Buffer size for reading back the part of a file received earlier.
@@ -449,8 +449,9 @@ fn spawn_file_writer(
 /// Shuttle: an upload that continues at [UploadParams::offset] keeps the first
 /// `offset` bytes of the file, reads them back into the checksum and appends
 /// the received chunks. A continuable upload ([UploadParams::resumable]) is
-/// synced to disk every [SYNC_INTERVAL] bytes and when it ends early, and the
-/// synced size is reported on `saved_tx`.
+/// synced to disk every [SYNC_INTERVAL] bytes, in the background while the
+/// writes go on, and when it ends early; the synced size is reported on
+/// `saved_tx`, always before this returns.
 async fn write_file_from_receiver(
     open: impl Future<Output = Result<tokio::fs::File, WriteError>>,
     params: &UploadParams,
@@ -506,6 +507,13 @@ async fn write_file_from_receiver(
     let mut file = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, file);
     let mut written: u64 = offset;
     let mut synced: u64 = offset;
+    // Shuttle: the sync of a continuable upload runs next to the writes, on a
+    // second handle of the file, instead of stopping them until the disk has
+    // caught up (that cost a quarter to almost half of the speed of a 1 GB
+    // upload over loopback on Windows).
+    // One at a time; the point it covers is reported here once it is done, so
+    // the reports stay in order and none comes after the upload ended.
+    let mut pending_sync: Option<PendingSync> = None;
     while let Some(chunk) = rx.recv().await {
         written += chunk.len() as u64;
         if written > expected_size {
@@ -523,22 +531,50 @@ async fn write_file_from_receiver(
             // Progress is best-effort: drop the event when the consumer lags.
             let _ = progress_tx.try_send(written);
         }
-        if params.resumable && written - synced >= SYNC_INTERVAL {
+        if pending_sync
+            .as_ref()
+            .is_some_and(|sync| sync.task.is_finished())
+        {
+            if let Some(point) = finish_sync(pending_sync.take()).await? {
+                synced = point;
+                report_saved(synced);
+            }
+        }
+        if params.resumable && pending_sync.is_none() && written - synced >= SYNC_INTERVAL {
+            // Everything written so far reaches the system first, so the sync
+            // covers at least up to `written`.
             file.flush()
                 .await
                 .map_err(|e| WriteError::failed(format!("Failed to flush file: {e}")))?;
-            file.get_ref()
-                .sync_data()
+            let handle = file
+                .get_ref()
+                .try_clone()
                 .await
                 .map_err(|e| WriteError::failed(format!("Failed to sync file: {e}")))?;
-            synced = written;
-            report_saved(synced);
+            pending_sync = Some(PendingSync {
+                point: written,
+                task: tokio::spawn(async move { handle.sync_data().await }),
+            });
         }
     }
     file.flush()
         .await
         .map_err(|e| WriteError::failed(format!("Failed to flush file: {e}")))?;
     let file = file.into_inner();
+
+    if written == expected_size {
+        // Complete: nothing is left to continue, so the sync still running is
+        // only waited for (no report). Its failure doesn't matter any more: the
+        // complete file is checked below.
+        if let Err(e) = finish_sync(pending_sync.take()).await {
+            tracing::warn!("{}", e.message);
+        }
+    } else if let Some(point) = finish_sync(pending_sync.take()).await.ok().flatten() {
+        // The connection was lost: the point of the sync still running is
+        // reported first, so it holds even if the final sync below fails.
+        synced = point;
+        report_saved(synced);
+    }
 
     if written != expected_size {
         if params.resumable {
@@ -611,6 +647,26 @@ async fn write_file_from_receiver(
     Ok(())
 }
 
+/// Shuttle: a sync of a continuable upload that runs next to the writes.
+struct PendingSync {
+    /// How many bytes of the file the sync covers.
+    point: u64,
+    task: tokio::task::JoinHandle<std::io::Result<()>>,
+}
+
+/// Shuttle: waits for `sync`, if there is one, and returns the point it covers
+/// once it has succeeded.
+async fn finish_sync(sync: Option<PendingSync>) -> Result<Option<u64>, WriteError> {
+    let Some(sync) = sync else {
+        return Ok(None);
+    };
+    match sync.task.await {
+        Ok(Ok(())) => Ok(Some(sync.point)),
+        Ok(Err(e)) => Err(WriteError::failed(format!("Failed to sync file: {e}"))),
+        Err(e) => Err(WriteError::failed(format!("Failed to sync file: {e}"))),
+    }
+}
+
 /// Reads the first `len` bytes of `file` into `hasher`.
 async fn hash_prefix(
     file: &mut tokio::fs::File,
@@ -628,4 +684,110 @@ async fn hash_prefix(
         remaining -= n as u64;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MIB: u64 = 1024 * 1024;
+
+    /// A folder for one test, removed when the test ends.
+    struct Scratch(PathBuf);
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Writes `received` bytes (in 1 MiB chunks) of a continuable upload of
+    /// `file_size` bytes, as if the connection ended after them. Returns the
+    /// result, every size reported as saved, and the size of the file on disk.
+    async fn receive(file_size: u64, received: u64) -> (Result<(), WriteError>, Vec<u64>, u64) {
+        let scratch = Scratch(
+            std::env::temp_dir().join(format!("shuttle-save-test-{}", uuid::Uuid::new_v4())),
+        );
+        std::fs::create_dir_all(&scratch.0).unwrap();
+        let path = scratch.0.join("upload.bin");
+        let params = UploadParams {
+            file_size,
+            offset: 0,
+            resumable: true,
+            expected_sha256: None,
+            timestamps: FileTimestamps::default(),
+        };
+        let (tx, mut rx) = mpsc::channel::<Bytes>(UPLOAD_CHANNEL_CAPACITY);
+        let (saved_tx, mut saved_rx) = mpsc::unbounded_channel();
+        let chunk = Bytes::from(vec![7_u8; MIB as usize]);
+        let feeder = tokio::spawn(async move {
+            for _ in 0..received / MIB {
+                tx.send(chunk.clone()).await.unwrap();
+            }
+        });
+        let open = {
+            let path = path.clone();
+            async move {
+                tokio::fs::File::create(&path)
+                    .await
+                    .map_err(|e| WriteError::failed(e.to_string()))
+            }
+        };
+        let result = write_file_from_receiver(open, &params, &mut rx, None, Some(&saved_tx)).await;
+        feeder.await.unwrap();
+        drop(saved_tx);
+        let mut saved = vec![];
+        while let Some(size) = saved_rx.recv().await {
+            saved.push(size);
+        }
+        let on_disk = std::fs::metadata(&path).unwrap().len();
+        (result, saved, on_disk)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_lost_connection_reports_synced_points_in_order() {
+        // 2.5 sync intervals arrive, then the connection ends early.
+        let received = 2 * SYNC_INTERVAL + SYNC_INTERVAL / 2;
+        let (result, saved, on_disk) = receive(received + MIB, received).await;
+
+        assert!(
+            result.is_err(),
+            "an upload that ended early is not complete"
+        );
+        assert_eq!(on_disk, received);
+        assert!(
+            saved.windows(2).all(|w| w[0] < w[1]),
+            "saved points in order: {saved:?}"
+        );
+        assert!(
+            saved.len() >= 2,
+            "a sync while receiving and the final one: {saved:?}"
+        );
+        assert!(
+            saved[0] >= SYNC_INTERVAL && saved[0] < received,
+            "saved {saved:?}"
+        );
+        assert_eq!(
+            *saved.last().unwrap(),
+            received,
+            "the final point is everything received"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_complete_upload_reports_only_points_before_its_end() {
+        let size = 2 * SYNC_INTERVAL + SYNC_INTERVAL / 2;
+        let (result, saved, on_disk) = receive(size, size).await;
+
+        assert!(result.is_ok(), "{:?}", result.err().map(|e| e.message));
+        assert_eq!(on_disk, size);
+        assert!(
+            saved.windows(2).all(|w| w[0] < w[1]),
+            "saved points in order: {saved:?}"
+        );
+        assert!(
+            saved.iter().all(|&s| s >= SYNC_INTERVAL && s < size),
+            "saved {saved:?}"
+        );
+    }
 }
