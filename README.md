@@ -1,48 +1,60 @@
 <div align="center">
 
-<img src="docs/readme/hero.png" alt="Shuttle: send photos, videos, files and text between your phone and computer" width="100%">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/hero-dark.jpg">
+  <img src="docs/readme/hero-light.jpg" alt="Shuttle. Phone to PC, just toss it over: photos fly from the phone's send screen into the Shuttle window on the PC." width="100%">
+</picture>
 
-### AirDrop for the rest of us.
+<a href="https://github.com/JackWorld99/shuttle/releases/latest/download/Shuttle-Windows-Setup.exe"><img src="docs/readme/download-windows.png" alt="Download for Windows" width="400"></a>
+<a href="https://github.com/JackWorld99/shuttle/releases/latest/download/Shuttle-Android.apk"><img src="docs/readme/download-android.png" alt="Get it on Android: scan the QR code with your phone" width="400"></a>
 
-**Toss photos, videos, files and text between your Android phone and your Windows PC — in seconds.**<br>
-Full quality. Encrypted. No cable, no cloud, no account.
-
-[![Download for Android](https://img.shields.io/badge/Download-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/JackWorld99/shuttle/releases/latest/download/Shuttle-Android.apk)
-[![Download for Windows](https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNCAyNCc%2BPHBhdGggZmlsbD0nd2hpdGUnIGQ9J00zIDNoOC41djguNUgzek0xMi41IDNIMjF2OC41aC04LjV6TTMgMTIuNWg4LjVWMjFIM3pNMTIuNSAxMi41SDIxVjIxaC04LjV6Jy8%2BPC9zdmc%2B)](https://github.com/JackWorld99/shuttle/releases/latest/download/Shuttle-Windows-Setup.exe)
-
-[![Latest release](https://img.shields.io/github/v/release/JackWorld99/shuttle?label=latest&color=e8572a)](https://github.com/JackWorld99/shuttle/releases/latest)
-[![License](https://img.shields.io/badge/license-Apache--2.0-1f2329)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/JackWorld99/shuttle?style=social)](https://github.com/JackWorld99/shuttle)
-
-[中文](README.zh-CN.md) · [Why Shuttle](#why-shuttle) · [Get started](#get-started-in-a-minute) · [FAQ](#faq) · [Security](SECURITY.md)
+Free and open source · No account · [All downloads](https://github.com/JackWorld99/shuttle/releases/latest) · [中文](README.zh-CN.md)
 
 </div>
 
-<p align="center"><img src="docs/readme/demo.gif" alt="Send photos from the phone, and they are on the computer a moment later" width="92%"></p>
+<p align="center"><img src="docs/readme/demo.gif" alt="Send photos from the phone, and they are on the PC a moment later" width="92%"></p>
 
-## You know the drill
+## Install in a minute
 
-You took a great photo. Now you want it on your computer. So you…
+<table>
+<tr><th width="50%">Windows</th><th width="50%">Android</th></tr>
+<tr><td valign="top">
 
-- 💬 **send it to yourself in a chat app** — and it arrives blurry and compressed,
-- ☁️ **upload it to the cloud** — and wait, then download it again, then delete it,
-- 🔌 **look for a cable** — which is never where you left it.
+1. Download and open the installer.
+2. Windows says **"Windows protected your PC"**? Click **More info → Run anyway**. The installer isn't code-signed yet.
+3. Open Shuttle. Closed, it keeps waiting in the tray.
 
-**Shuttle skips all of that.** Your phone and your computer talk to each other directly over your Wi-Fi.
-Share → tap your PC → done. The original file, every byte checked.
+</td><td valign="top">
+
+1. Scan the QR code above with your phone.
+2. Open the download. If Android asks, let your browser **install unknown apps**.
+3. Open Shuttle and allow access to photos.
+
+</td></tr>
+</table>
+
+**Pair once:** on the PC click **Add device**, on the phone tap the scan button (top right) and point it at the code. From then on, files from your devices just arrive.
 
 ## Why Shuttle
 
-|   |   |
-|---|---|
-| 📸 **Your photos, untouched** | Originals only — no compression, no resizing. Every file is verified with SHA-256 on arrival. |
-| ⚡ **As fast as your Wi-Fi** | Nothing goes through a server, so there's no upload and no download. In our tests, 200 photos (about 500 MB) went from phone to PC in under 40 seconds on ordinary home Wi-Fi. |
-| 🤝 **Pair once, then it just works** | Scan a QR code one time. From then on your devices find each other, and files from them arrive without a single tap. |
-| 📋 **Copy here, paste there** | Press <kbd>Ctrl</kbd>+<kbd>V</kbd> on your PC to send the clipboard to your phone. Share a link from your phone and it's ready to paste on your PC. |
-| 🔒 **Private by design** | No account, no cloud, no tracking, no ads. Transfers are encrypted, and only the device that scans the QR code on your screen can pair, so no one can sneak in. |
-| 🖥️ **Always ready** | Shuttle waits quietly in the tray, can start with Windows, and keeps itself up to date with signed updates. |
-| 📦 **Nothing lost on the way** | Send to your phone while it's offline: the files wait and go out by themselves once it's back. A big video cut off halfway picks up where it stopped. |
-| 🌍 **Works away from home** | Add [Tailscale](https://tailscale.com) on both devices and it works over mobile data too — still end-to-end encrypted. |
+- **Originals, untouched.** No compression, no resizing. Every file is checked with SHA-256 when it arrives.
+- **As fast as your Wi-Fi.** Straight from one device to the other, no server in between.
+- **Pair once.** After one QR scan your devices find each other, and files arrive without a tap.
+- **Copy here, paste there.** <kbd>Ctrl</kbd>+<kbd>V</kbd> sends the PC's clipboard to your phone; a link shared on the phone is ready to paste on the PC.
+- **Nothing lost on the way.** Phone offline? It waits and goes out when it's back. Cut off halfway? It picks up where it stopped.
+- **Private by design.** No account, no cloud, no tracking. Encrypted from device to device.
+
+## Take a look
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/look-phone-dark.jpg">
+  <img src="docs/readme/look-phone-light.jpg" alt="On the phone: the home screen, picking who gets it, and a transfer on its way" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/look-pc-dark.jpg">
+  <img src="docs/readme/look-pc-light.jpg" alt="On the PC: drop files on the window to send them to your phone" width="100%">
+</picture>
 
 ## How it compares
 
@@ -53,30 +65,6 @@ Share → tap your PC → done. The original file, every byte checked.
 | Works without internet | ✅ | ❌ | ❌ | ✅ |
 | Files never leave your devices | ✅ | ❌ | ❌ | ✅ |
 | No cable to find | ✅ | ✅ | ✅ | ❌ |
-
-## Take a look
-
-<table>
-<tr><th>Your phone</th><th>Pick where it goes</th><th>On its way</th></tr>
-<tr>
-<td align="center"><img src="docs/readme/phone-home.png" width="240"></td>
-<td align="center"><img src="docs/readme/phone-send.png" width="240"></td>
-<td align="center"><img src="docs/readme/phone-sending.png" width="240"></td>
-</tr>
-<tr><th colspan="3">Your PC</th></tr>
-<tr><td colspan="3" align="center"><img src="docs/readme/pc-home.png" width="760"></td></tr>
-</table>
-
-## Get started in a minute
-
-1. **Install** Shuttle on your phone and your PC (buttons above) and connect both to the same Wi-Fi.
-2. **Pair**: on the PC click **Add device**; on the phone tap the scan button and point it at the QR code. That's it, you're paired.
-3. **Toss things over**:
-   - **Phone → PC**: in any app, tap **Share → Shuttle**.
-   - **PC → phone**: drag files onto Shuttle, or press <kbd>Ctrl</kbd>+<kbd>V</kbd>.
-
-> **Windows says "Windows protected your PC"?** The installer isn't code-signed yet. Click **More info → Run anyway**.<br>
-> **Android asks about unknown apps?** Allow your browser to install it once.
 
 ## FAQ
 
@@ -89,46 +77,36 @@ Yes. Shuttle is open source (Apache-2.0), with no ads, no paid tier and no accou
 <details>
 <summary><b>Is it safe? Could someone else on the Wi-Fi get my files?</b></summary>
 
-Files go directly between your devices and are encrypted on the way. Only devices you paired can send to you without asking; anything else needs your OK first. Pairing is tied to the QR code on your screen, and two computers pair by typing each other's 6-digit code, so a device in the middle can't slip in. Details in [SECURITY.md](SECURITY.md).
+Files go directly between your devices and are encrypted on the way. Only devices you paired can send to you without asking; anything else needs your OK first. Details in [SECURITY.md](SECURITY.md).
 </details>
 
 <details>
 <summary><b>Do I need internet?</b></summary>
 
-No. Both devices just need to be on the same Wi-Fi network — even one with no internet. For use away from home, install Tailscale on both.
+No. Both devices just need to be on the same Wi-Fi, even one with no internet. Away from home, install [Tailscale](https://tailscale.com) on both and it works over mobile data too.
 </details>
 
 <details>
 <summary><b>The phone can't find my PC.</b></summary>
 
-Make sure both are on the same network (guest networks and some routers keep devices apart). On Windows, allow Shuttle through the firewall on **private** networks and set your home Wi-Fi to **Private**. Office and school networks often block devices from seeing each other — Tailscale works around that.
+Make sure both are on the same network (guest networks and some routers keep devices apart). On Windows, allow Shuttle through the firewall on **private** networks and set your home Wi-Fi to **Private**.
 </details>
 
 <details>
 <summary><b>iPhone? Mac? Linux?</b></summary>
 
-Android and Windows today, and a macOS build is in testing. iPhone and Linux aren't available yet — [open an issue](../../issues/new/choose) to tell us which one you want most.
+Android and Windows today, and a macOS build is in testing. [Open an issue](../../issues/new/choose) to tell us which one you want most.
 </details>
 
 <details>
 <summary><b>How is this related to LocalSend?</b></summary>
 
-Shuttle is built on [LocalSend](https://github.com/localsend/localsend), the excellent open-source file-sharing app. It keeps LocalSend's solid transfer and encryption core and adds a redesigned interface, QR pairing with verification, trusted "My devices", clipboard sending, Tailscale support and signed auto-updates. Thank you to LocalSend's author and contributors.
+Shuttle is built on [LocalSend](https://github.com/localsend/localsend), the excellent open-source file-sharing app. It keeps LocalSend's transfer and encryption core and adds a redesigned interface, QR pairing, trusted "My devices", clipboard sending, a send queue, resumable transfers, Tailscale support and signed auto-updates. Thank you to LocalSend's author and contributors.
 </details>
-
-## What's next
-
-- [ ] Signed macOS build
-- [x] Resume large transfers after a dropped connection
-- [x] Send queue: files wait on your PC and go out as soon as your phone is back online
-
-Have an idea? [Open an issue](../../issues/new/choose).
 
 ## Contributing
 
-Bug reports, ideas and pull requests are all welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Found a security problem? Please report it privately as described in [SECURITY.md](SECURITY.md).
-
-**If Shuttle saved you a cable hunt, a ⭐ helps others find it.**
+Bug reports, ideas and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Found a security problem? Please report it privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
